@@ -19,7 +19,7 @@ services:
       - "12345:12345"  # Alloy UI
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - /tmp:/tmp:ro  # Read access to the logs directory
+      - ./logs:/logs:ro  # Read access to the logs directory
     command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345
     depends_on:
       - loki

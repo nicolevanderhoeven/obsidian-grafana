@@ -5,7 +5,7 @@
 loki.source.file "obsidian_logs" {
   targets = [
     {
-      __path__ = "/tmp/obsidian_logs.json",
+      __path__ = "/logs/obsidian_logs.json",
       job = "obsidian-parser",
     },
   ]
