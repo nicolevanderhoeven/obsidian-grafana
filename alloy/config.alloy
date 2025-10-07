@@ -1,19 +1,14 @@
 // Alloy configuration for Obsidian note monitoring
 // This configuration reads JSON log entries and forwards them to Loki
 
-// File discovery component to watch for new log entries
-discovery.file "obsidian_logs" {
-  path_targets = [
+// Local file source to read the JSON log file
+loki.source.file "obsidian_logs" {
+  targets = [
     {
       __path__ = "/tmp/obsidian_logs.json",
       job = "obsidian-parser",
     },
   ]
-}
-
-// Local file source to read the JSON log file
-loki.source.file "obsidian_logs" {
-  targets    = discovery.file.obsidian_logs.targets
   forward_to = [loki.process.obsidian_logs.receiver]
 }
 

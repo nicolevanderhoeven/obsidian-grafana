@@ -1,4 +1,4 @@
 # Obsidian to Grafana Configuration
-vault_path: "/path/to/your/obsidian/vault"  # Update this to your actual vault path
+vault_path: "/Users/nic/NVDH Dropbox/Nicole van der Hoeven/DownloadMyBrain"  # Update this to your actual vault path
 output_file: "/tmp/obsidian_logs.json"
 log_level: "INFO"
