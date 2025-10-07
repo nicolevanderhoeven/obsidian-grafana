@@ -11,8 +11,11 @@ PARSER_LOG="$LOG_DIR/obsidian_parser.log"
 # Create logs directory if it doesn't exist
 mkdir -p "$LOG_DIR"
 
+# Get the full path to python3
+PYTHON_PATH=$(which python3)
+
 # Create a simple log entry that will be picked up by Alloy
-CRON_JOB="*/5 * * * * cd $SCRIPT_DIR && python3 $PYTHON_SCRIPT >> $PARSER_LOG 2>&1 && echo '{\"timestamp\": \"'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'\", \"level\": \"info\", \"message\": \"Cron job executed successfully\", \"source\": \"cron\"}' >> $PARSER_LOG"
+CRON_JOB="*/5 * * * * cd $SCRIPT_DIR && $PYTHON_PATH $PYTHON_SCRIPT >> $PARSER_LOG 2>&1 && echo '{\"timestamp\": \"'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'\", \"level\": \"info\", \"message\": \"Cron job executed successfully\", \"source\": \"cron\"}' >> $PARSER_LOG"
 
 echo "Setting up cron job for Obsidian parser..."
 echo "Cron job: $CRON_JOB"
