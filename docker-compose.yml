@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: obsidian-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - obsidian-monitoring
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: obsidian-alloy
+    ports:
+      - "12345:12345"  # Alloy UI
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /tmp:/tmp:ro  # Read access to the logs directory
+    command: run --config.file=/etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345
+    depends_on:
+      - loki
+    networks:
+      - obsidian-monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: obsidian-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - loki
+    networks:
+      - obsidian-monitoring
+
+volumes:
+  loki_data:
+  grafana_data:
+
+networks:
+  obsidian-monitoring:
+    driver: bridge

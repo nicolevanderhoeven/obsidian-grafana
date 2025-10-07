@@ -1,0 +1,75 @@
+// Alloy configuration for Obsidian note monitoring
+// This configuration reads JSON log entries and forwards them to Loki
+
+// File discovery component to watch for new log entries
+discovery.file "obsidian_logs" {
+  path_targets = [
+    {
+      __path__ = "/tmp/obsidian_logs.json",
+      job = "obsidian-parser",
+    },
+  ]
+}
+
+// Local file source to read the JSON log file
+loki.source.file "obsidian_logs" {
+  targets    = discovery.file.obsidian_logs.targets
+  forward_to = [loki.process.obsidian_logs.receiver]
+}
+
+// Process the log entries to extract labels and format for Loki
+loki.process "obsidian_logs" {
+  forward_to = [loki.write.loki.receiver]
+
+  // Extract labels from the JSON structure
+  stage.json {
+    expressions = {
+      timestamp = "timestamp",
+      note_name = "labels.note_name",
+      vault = "labels.vault",
+      job = "labels.job",
+      tags = "labels.tags",
+      frontmatter_status = "labels.frontmatter_status",
+      frontmatter_category = "labels.frontmatter_category",
+      frontmatter_priority = "labels.frontmatter_priority",
+    }
+  }
+
+  // Set the timestamp from the JSON
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339"
+  }
+
+  // Set labels for Loki
+  stage.labels {
+    values = {
+      note_name = "",
+      vault = "",
+      job = "",
+      tags = "",
+      status = "",
+      category = "",
+      priority = "",
+    }
+  }
+
+  // Clean up the log line to contain only the metadata JSON
+  stage.json {
+    expressions = {
+      log_line = "line",
+    }
+  }
+
+  // Set the final log line
+  stage.output {
+    source = "log_line"
+  }
+}
+
+// Write to Loki
+loki.write "loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
