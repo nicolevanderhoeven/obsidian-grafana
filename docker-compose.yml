@@ -27,7 +27,7 @@ services:
       - obsidian-monitoring
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.6.0
     container_name: obsidian-grafana
     ports:
       - "3000:3000"
