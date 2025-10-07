@@ -5,7 +5,14 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_SCRIPT="$SCRIPT_DIR/parse_notes.py"
-CRON_JOB="*/5 * * * * cd $SCRIPT_DIR && python3 $PYTHON_SCRIPT >> /tmp/obsidian_parser.log 2>&1"
+LOG_DIR="$SCRIPT_DIR/logs"
+PARSER_LOG="$LOG_DIR/obsidian_parser.log"
+
+# Create logs directory if it doesn't exist
+mkdir -p "$LOG_DIR"
+
+# Create a simple log entry that will be picked up by Alloy
+CRON_JOB="*/5 * * * * cd $SCRIPT_DIR && python3 $PYTHON_SCRIPT >> $PARSER_LOG 2>&1 && echo '{\"timestamp\": \"'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'\", \"level\": \"info\", \"message\": \"Cron job executed successfully\", \"source\": \"cron\"}' >> $PARSER_LOG"
 
 echo "Setting up cron job for Obsidian parser..."
 echo "Cron job: $CRON_JOB"
@@ -15,7 +22,9 @@ echo "Cron job: $CRON_JOB"
 
 echo "Cron job added successfully!"
 echo "The parser will run every 5 minutes."
-echo "Logs will be written to /tmp/obsidian_parser.log"
+echo "Parser logs will be written to: $PARSER_LOG"
+echo "All logs will be sent to Loki via Alloy"
 echo ""
 echo "To view the cron job: crontab -l"
 echo "To remove the cron job: crontab -e (then delete the line)"
+echo "To monitor logs: tail -f $PARSER_LOG"

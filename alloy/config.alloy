@@ -8,6 +8,10 @@ loki.source.file "obsidian_logs" {
       __path__ = "/logs/obsidian_logs.json",
       job = "obsidian-parser",
     },
+    {
+      __path__ = "/logs/obsidian_parser.log",
+      job = "obsidian-cron",
+    },
   ]
   forward_to = [loki.process.obsidian_logs.receiver]
 }
@@ -16,7 +20,7 @@ loki.source.file "obsidian_logs" {
 loki.process "obsidian_logs" {
   forward_to = [loki.write.loki.receiver]
 
-  // Extract labels from the JSON structure
+  // Try to parse as JSON first (for obsidian_logs.json)
   stage.json {
     expressions = {
       timestamp = "timestamp",
@@ -30,13 +34,13 @@ loki.process "obsidian_logs" {
     }
   }
 
-  // Set the timestamp from the JSON
+  // Set the timestamp from the JSON (only if JSON parsing succeeded)
   stage.timestamp {
     source = "timestamp"
     format = "RFC3339"
   }
 
-  // Set labels for Loki
+  // Set labels for Loki (only for JSON entries)
   stage.labels {
     values = {
       note_name = "",
@@ -49,11 +53,16 @@ loki.process "obsidian_logs" {
     }
   }
 
-  // Clean up the log line to contain only the metadata JSON
+  // For JSON entries, clean up the log line
   stage.json {
     expressions = {
       log_line = "line",
     }
+  }
+
+  // For plain text entries (cron logs), keep the original line
+  stage.regex {
+    expression = "^(?P<log_line>.*)$"
   }
 
   // Set the final log line
