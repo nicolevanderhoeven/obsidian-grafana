@@ -7,3 +7,11 @@ datasources:
     url: http://loki:3100
     isDefault: true
     editable: true
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - datasourceUid: loki
+          matcherRegex: ".*"
+          name: "Logs"
+          url: "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"expr\":\"{job=\\\"obsidian-parser\\\"}\",\"refId\":\"A\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}"
+    version: 1
