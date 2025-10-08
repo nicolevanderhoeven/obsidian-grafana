@@ -3,5 +3,5 @@ vault_path: "/Users/nic/NVDH Dropbox/Nicole van der Hoeven/DownloadMyBrain"  # U
 output_file: "./logs/obsidian_logs.json"
 log_level: "INFO"
 metrics_port: 8080
-start_metrics_server: true
+start_metrics_server: false
 grafana_password: "sLCaK3J*MdNd72k%qEt%"

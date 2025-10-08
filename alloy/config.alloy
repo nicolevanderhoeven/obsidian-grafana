@@ -30,6 +30,7 @@ loki.process "obsidian_logs" {
       frontmatter_status = "labels.frontmatter_status",
       frontmatter_category = "labels.frontmatter_category",
       frontmatter_priority = "labels.frontmatter_priority",
+      frontmatter_type = "labels.frontmatter_type",
     }
   }
 
@@ -45,9 +46,10 @@ loki.process "obsidian_logs" {
       vault = "",
       job = "",
       tags = "",
-      status = "",
-      category = "",
-      priority = "",
+      frontmatter_status = "",
+      frontmatter_category = "",
+      frontmatter_priority = "",
+      frontmatter_type = "",
     }
   }
 

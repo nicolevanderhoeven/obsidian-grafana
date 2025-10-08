@@ -17,10 +17,11 @@ Python Parser → JSON Logs → Alloy → Loki → Grafana Dashboards
 
 - **Basic Statistics**: Word count, line count, file size tracking over time
 - **Frontmatter Analysis**: YAML frontmatter fields as Loki labels for filtering
+- **Type Analysis**: Distribution and usage patterns of frontmatter types (NPC, PC, audio, etc.)
 - **Tag Tracking**: Both frontmatter tags and inline `#tags`
 - **Note Relationships**: Wikilinks (`[[note]]`) and backlink analysis
 - **Time Series Visualization**: Track how your notes evolve over time
-- **Interactive Dashboards**: Filter by tags, categories, and note names
+- **Interactive Dashboards**: Filter by tags, categories, note names, and types
 
 ## Quick Start
 
@@ -85,6 +86,7 @@ Open Grafana at http://localhost:3000 and explore the pre-configured dashboards:
 - **Time Series**: Word count, line count, and file size trends
 - **Tag Analysis**: Tag usage patterns and distributions
 - **Note Relationships**: Wikilinks and backlink analysis
+- **Frontmatter Types Analysis**: Distribution and usage of different frontmatter types
 
 ## Manual Usage
 
@@ -110,30 +112,7 @@ Visit http://localhost:12345 to see Alloy's status and configuration.
 
 ## Dashboard Queries
 
-The dashboards use LogQL queries to filter and aggregate data. Here are some examples:
-
-### Basic Queries
-
-```logql
-# All notes
-{job="obsidian-parser"}
-
-# Notes with specific tag
-{job="obsidian-parser"} | json | tags=~".*research.*"
-
-# Notes by category
-{job="obsidian-parser"} | json | frontmatter_category="work"
-```
-
-### Time Series Queries
-
-```logql
-# Word count over time
-sum by (note_name) (avg_over_time({job="obsidian-parser"} | json | unwrap word_count [5m]))
-
-# Tag usage trends
-sum by (tags) (count_over_time({job="obsidian-parser"} | json | tags != "" [1h]))
-```
+The dashboards use LogQL queries to filter and aggregate data. See `.cursor/plan.md` for detailed query examples and implementation details.
 
 ## Configuration
 
@@ -157,12 +136,17 @@ Alloy is configured to:
 
 ### Grafana Dashboards
 
-Four main dashboards are provided:
+Five main dashboards are provided:
 
 1. **Overview**: Total notes, processing rate, recent activity
 2. **Time Series**: Individual note metrics over time
 3. **Tag Analysis**: Tag usage patterns and distributions
 4. **Relationships**: Wikilinks and note connections
+5. **Frontmatter Types Analysis**: Distribution and usage of different frontmatter types
+
+#### Frontmatter Types Analysis Dashboard
+
+Analyzes the distribution and usage patterns of frontmatter types (NPC, PC, audio, etc.) with pie charts, time series, and vault breakdowns.
 
 ## Troubleshooting
 
