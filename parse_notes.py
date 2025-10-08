@@ -11,10 +11,89 @@ import json
 import yaml
 import logging
 import argparse
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from collections import defaultdict
 import frontmatter
+from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+
+# Prometheus metrics
+obsidian_note_total = Counter('obsidian_note_total', 'Total number of unique notes', ['vault', 'note_name'])
+obsidian_word_count_total = Counter('obsidian_word_count_total', 'Total word count across all notes', ['vault', 'note_name'])
+obsidian_tags_total = Counter('obsidian_tags_total', 'Total number of unique tags', ['vault', 'note_name'])
+
+# Gauges for current state
+obsidian_notes_gauge = Gauge('obsidian_notes_count', 'Current number of unique notes', ['vault'])
+obsidian_words_gauge = Gauge('obsidian_words_total', 'Current total word count', ['vault'])
+obsidian_tags_gauge = Gauge('obsidian_tags_count', 'Current number of unique tags', ['vault'])
+
+# Global state for metrics
+metrics_data = {
+    'unique_notes': set(),
+    'unique_tags': set(),
+    'total_words': 0,
+    'vault_counts': defaultdict(lambda: {'notes': set(), 'tags': set(), 'words': 0})
+}
+
+
+class MetricsHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/metrics':
+            self.send_response(200)
+            self.send_header('Content-Type', CONTENT_TYPE_LATEST)
+            self.end_headers()
+            self.wfile.write(generate_latest())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+
+def start_metrics_server(port: int = 8080):
+    """Start the Prometheus metrics HTTP server."""
+    server = HTTPServer(('0.0.0.0', port), MetricsHandler)
+    logging.info(f"Starting metrics server on port {port}")
+    
+    def run_server():
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            logging.info("Shutting down metrics server")
+            server.shutdown()
+    
+    thread = threading.Thread(target=run_server, daemon=True)
+    thread.start()
+    return server
+
+
+def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str]):
+    """Update Prometheus metrics with new note data."""
+    global metrics_data
+    
+    # Update global state
+    metrics_data['unique_notes'].add(note_name)
+    metrics_data['total_words'] += word_count
+    metrics_data['vault_counts'][vault]['notes'].add(note_name)
+    metrics_data['vault_counts'][vault]['words'] += word_count
+    
+    # Add tags
+    for tag in tags:
+        metrics_data['unique_tags'].add(tag)
+        metrics_data['vault_counts'][vault]['tags'].add(tag)
+    
+    # Update counters
+    obsidian_note_total.labels(vault=vault, note_name=note_name).inc()
+    obsidian_word_count_total.labels(vault=vault, note_name=note_name).inc(word_count)
+    for tag in tags:
+        obsidian_tags_total.labels(vault=vault, note_name=note_name).inc()
+    
+    # Update gauges
+    obsidian_notes_gauge.labels(vault=vault).set(len(metrics_data['vault_counts'][vault]['notes']))
+    obsidian_words_gauge.labels(vault=vault).set(metrics_data['vault_counts'][vault]['words'])
+    obsidian_tags_gauge.labels(vault=vault).set(len(metrics_data['vault_counts'][vault]['tags']))
 
 
 def setup_logging(log_level: str = "INFO") -> None:
@@ -121,6 +200,59 @@ def create_loki_labels(note_name: str, vault_name: str, metadata: Dict[str, Any]
     return labels
 
 
+def parse_obsidian_vault_metrics_only(vault_path: str) -> None:
+    """Parse all markdown files in the Obsidian vault and update metrics only (no file output)."""
+    vault_path = Path(vault_path)
+    if not vault_path.exists():
+        raise ValueError(f"Vault path does not exist: {vault_path}")
+    
+    vault_name = vault_path.name
+    
+    # Find all markdown files
+    md_files = list(vault_path.rglob("*.md"))
+    logging.info(f"Found {len(md_files)} markdown files in {vault_path}")
+    
+    for file_path in md_files:
+        try:
+            # Skip hidden files and directories
+            if any(part.startswith('.') for part in file_path.parts):
+                continue
+            
+            note_name = file_path.stem
+            relative_path = str(file_path.relative_to(vault_path))
+            
+            # Extract all metadata
+            basic_stats = extract_basic_stats(file_path)
+            frontmatter_metadata = extract_frontmatter_metadata(file_path)
+            timestamps = get_file_timestamps(file_path)
+            
+            # Combine all metadata
+            all_metadata = {
+                **basic_stats,
+                **frontmatter_metadata,
+                **timestamps,
+                'file_path': relative_path,
+                'note_name': note_name
+            }
+            
+            # Update Prometheus metrics
+            tags = []
+            if 'tags' in all_metadata:
+                tags = [tag.strip() for tag in all_metadata['tags'].split(',') if tag.strip()]
+            if 'inline_tags' in all_metadata:
+                tags.extend([tag.strip() for tag in all_metadata['inline_tags'].split(',') if tag.strip()])
+            
+            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags)
+            
+            logging.debug(f"Processed: {relative_path}")
+            
+        except Exception as e:
+            logging.error(f"Error processing {file_path}: {e}")
+            continue
+    
+    logging.info(f"Processed {len(md_files)} files for metrics")
+
+
 def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
     """Parse all markdown files in the Obsidian vault and output to JSON."""
     vault_path = Path(vault_path)
@@ -168,6 +300,16 @@ def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
             }
             
             entries.append(entry)
+            
+            # Update Prometheus metrics
+            tags = []
+            if 'tags' in all_metadata:
+                tags = [tag.strip() for tag in all_metadata['tags'].split(',') if tag.strip()]
+            if 'inline_tags' in all_metadata:
+                tags.extend([tag.strip() for tag in all_metadata['inline_tags'].split(',') if tag.strip()])
+            
+            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags)
+            
             logging.debug(f"Processed: {relative_path}")
             
         except Exception as e:
@@ -193,6 +335,8 @@ def main():
     parser.add_argument('--vault-path', help='Override vault path from config')
     parser.add_argument('--output', help='Override output file from config')
     parser.add_argument('--log-level', default='INFO', help='Log level')
+    parser.add_argument('--metrics-port', type=int, default=8080, help='Port for Prometheus metrics server')
+    parser.add_argument('--start-metrics-server', action='store_true', help='Start the Prometheus metrics server')
     
     args = parser.parse_args()
     
@@ -206,15 +350,33 @@ def main():
     vault_path = args.vault_path or config.get('vault_path')
     output_file = args.output or config.get('output_file', '/tmp/obsidian_logs.json')
     log_level = args.log_level or config.get('log_level', 'INFO')
+    metrics_port = args.metrics_port or config.get('metrics_port', 8080)
+    start_metrics_server_flag = args.start_metrics_server or config.get('start_metrics_server', False)
     
     if not vault_path:
         raise ValueError("Vault path must be specified in config file or --vault-path argument")
     
     setup_logging(log_level)
     
+    # Start metrics server if requested
+    if start_metrics_server_flag:
+        start_metrics_server(metrics_port)
+        logging.info(f"Metrics server started on port {metrics_port}")
+    
     try:
-        parse_obsidian_vault(vault_path, output_file)
-        logging.info("Parsing completed successfully")
+        if start_metrics_server_flag:
+            # In metrics-only mode, don't write to file, just parse for metrics
+            parse_obsidian_vault_metrics_only(vault_path)
+            logging.info("Metrics parsing completed successfully")
+            logging.info("Metrics server is running. Press Ctrl+C to stop.")
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                logging.info("Shutting down...")
+        else:
+            parse_obsidian_vault(vault_path, output_file)
+            logging.info("Parsing completed successfully")
     except Exception as e:
         logging.error(f"Parsing failed: {e}")
         exit(1)

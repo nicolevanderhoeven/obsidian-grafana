@@ -40,28 +40,30 @@ log_level: "INFO"
 pip3 install -r requirements.txt
 ```
 
-### 3. Start the Monitoring Stack
+### 3. Start the System
+
+Run the setup script to start everything:
 
 ```bash
-docker-compose up -d
+./setup.sh
 ```
 
-This will start:
-- **Grafana** at http://localhost:3000 (admin/admin)
+This will:
+- Read the Grafana password from `config.yaml`
+- Start all Docker containers
+- Set up automated parsing every 5 minutes
+- Display access URLs and credentials
+
+Services available at:
+- **Grafana** at http://localhost:3000 (admin/your_password)
 - **Loki** at http://localhost:3100
 - **Alloy** at http://localhost:12345
+- **Prometheus** at http://localhost:9090
+- **Metrics Exporter** at http://localhost:8080
 
-### 4. Set Up Automated Parsing
+The parser will run every 5 minutes automatically.
 
-Run the setup script to create a cron job:
-
-```bash
-./setup_cron.sh
-```
-
-This will run the parser every 5 minutes automatically.
-
-### 5. Test the System
+### 4. Test the System
 
 Run the parser manually to generate initial data:
 
@@ -206,7 +208,7 @@ obsidian-grafana/
 ├── parse_notes.py          # Main Python parser
 ├── requirements.txt        # Python dependencies
 ├── config.yaml            # Configuration file
-├── setup_cron.sh          # Cron job setup script
+├── setup.sh               # Setup script (starts system + cron job)
 ├── docker-compose.yml     # Docker stack definition
 ├── alloy/
 │   └── config.alloy       # Alloy configuration

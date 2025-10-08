@@ -32,7 +32,7 @@ limits_config:
   volume_enabled: true
   max_streams_per_user: 50000
   max_line_size: 256000
-  max_entries_limit_per_query: 10000
+  max_entries_limit_per_query: 20000
   allow_structured_metadata: false
 
 # By default, Loki will send anonymous, but uniquely-identifiable usage and configuration

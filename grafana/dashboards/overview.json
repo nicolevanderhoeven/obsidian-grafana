@@ -177,7 +177,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": "Loki",
+      "datasource": "Prometheus",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -225,7 +225,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "count(count by (note_name) ({job=\"obsidian-parser\"}))",
+          "expr": "obsidian_notes_count",
           "refId": "A"
         }
       ],
@@ -233,7 +233,7 @@
       "type": "stat"
     },
     {
-      "datasource": "Loki",
+      "datasource": "Prometheus",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -281,7 +281,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum(avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap word_count [5m]))",
+          "expr": "obsidian_words_total",
           "refId": "A"
         }
       ],
@@ -289,7 +289,7 @@
       "type": "stat"
     },
     {
-      "datasource": "Loki",
+      "datasource": "Prometheus",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -337,7 +337,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "count(count by (tags) ({job=\"obsidian-parser\" | json | tags != \"\"}))",
+          "expr": "obsidian_tags_count",
           "refId": "A"
         }
       ],

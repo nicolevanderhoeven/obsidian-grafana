@@ -24,7 +24,6 @@ loki.process "obsidian_logs" {
   stage.json {
     expressions = {
       timestamp = "timestamp",
-      note_name = "labels.note_name",
       vault = "labels.vault",
       job = "labels.job",
       tags = "labels.tags",
@@ -40,10 +39,9 @@ loki.process "obsidian_logs" {
     format = "RFC3339"
   }
 
-  // Set labels for Loki (only for JSON entries)
+  // Set labels for Loki (reduced cardinality - no note_name)
   stage.labels {
     values = {
-      note_name = "",
       vault = "",
       job = "",
       tags = "",
