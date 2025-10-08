@@ -1,0 +1,9 @@
+# Obsidian to Grafana Configuration
+# Copy this file to config.yaml and update the values for your setup
+
+vault_path: "/path/to/your/obsidian/vault"  # Update this to your actual vault path
+output_file: "./logs/obsidian_logs.json"
+log_level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+metrics_port: 8080
+start_metrics_server: false  # Set to true to enable metrics collection
+grafana_password: "your_grafana_password_here"  # Replace with your actual Grafana password

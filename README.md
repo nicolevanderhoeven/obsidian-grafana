@@ -25,15 +25,26 @@ Python Parser → JSON Logs → Alloy → Loki → Grafana Dashboards
 
 ## Quick Start
 
-### 1. Configure Your Vault Path
+### 1. Set Up Configuration
 
-Edit `config.yaml` and set your Obsidian vault path:
+First, copy the example configuration file and customize it for your setup:
+
+```bash
+cp config.yaml.example config.yaml
+```
+
+Then edit `config.yaml` and update the values:
 
 ```yaml
-vault_path: "/path/to/your/obsidian/vault"
-output_file: "/tmp/obsidian_logs.json"
-log_level: "INFO"
+vault_path: "/path/to/your/obsidian/vault"  # Update this to your actual vault path
+output_file: "./logs/obsidian_logs.json"
+log_level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+metrics_port: 8080
+start_metrics_server: false  # Set to true to enable metrics collection
+grafana_password: "your_grafana_password_here"  # Replace with your actual Grafana password
 ```
+
+**Important**: The `config.yaml` file contains sensitive information (like your Grafana password) and is excluded from version control. Always use the `config.yaml.example` file as a template.
 
 ### 2. Install Python Dependencies
 
@@ -191,7 +202,8 @@ docker-compose restart
 obsidian-grafana/
 ├── parse_notes.py          # Main Python parser
 ├── requirements.txt        # Python dependencies
-├── config.yaml            # Configuration file
+├── config.yaml            # Configuration file (create from example)
+├── config.yaml.example    # Example configuration template
 ├── setup.sh               # Setup script (starts system + cron job)
 ├── docker-compose.yml     # Docker stack definition
 ├── alloy/
