@@ -294,7 +294,7 @@ def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
             
             # Create log entry
             entry = {
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
                 'labels': labels,
                 'line': json.dumps(all_metadata)
             }

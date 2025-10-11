@@ -31,16 +31,18 @@ loki.process "obsidian_logs" {
       frontmatter_category = "labels.frontmatter_category",
       frontmatter_priority = "labels.frontmatter_priority",
       frontmatter_type = "labels.frontmatter_type",
+      log_line = "line",
     }
   }
 
   // Set the timestamp from the JSON (only if JSON parsing succeeded)
   stage.timestamp {
     source = "timestamp"
-    format = "RFC3339"
+    format = "2006-01-02T15:04:05.999999"
+    action_on_failure = "skip"
   }
 
-  // Set labels for Loki (reduced cardinality - no note_name)
+  // Set labels for Loki
   stage.labels {
     values = {
       vault = "",
@@ -50,13 +52,6 @@ loki.process "obsidian_logs" {
       frontmatter_category = "",
       frontmatter_priority = "",
       frontmatter_type = "",
-    }
-  }
-
-  // For JSON entries, clean up the log line
-  stage.json {
-    expressions = {
-      log_line = "line",
     }
   }
 

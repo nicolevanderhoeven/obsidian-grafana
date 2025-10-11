@@ -90,7 +90,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\" | json | __error__=\"\" | unwrap wikilinks [5m]))",
+          "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap wikilinks [5m] | note_name != \"\"))",
           "refId": "A"
         }
       ],
@@ -169,7 +169,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\" | json | __error__=\"\" | unwrap inline_tags [5m]))",
+          "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap inline_tags [5m] | note_name != \"\"))",
           "refId": "A"
         }
       ],
@@ -225,7 +225,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "count(count by (note_name) ({job=\"obsidian-parser\" | json | wikilinks != \"\"}))",
+          "expr": "count(count by (note_name) ({job=\"obsidian-parser\"} | json | wikilinks != \"\" | note_name != \"\"))",
           "refId": "A"
         }
       ],
@@ -337,7 +337,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "count(count by (note_name) ({job=\"obsidian-parser\" | json | inline_tags != \"\"}))",
+          "expr": "count(count by (note_name) ({job=\"obsidian-parser\"} | json | inline_tags != \"\" | note_name != \"\"))",
           "refId": "A"
         }
       ],
@@ -472,7 +472,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\" | json | __error__=\"\" | unwrap wikilinks [1h]))",
+          "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap wikilinks [1h] | note_name != \"\"))",
           "refId": "A",
           "legendFormat": "{{note_name}}"
         }
@@ -498,14 +498,14 @@
           "value": "$__all"
         },
         "datasource": "Loki",
-        "definition": "label_values({job=\"obsidian-parser\"}, note_name)",
+        "definition": "label_values({job=\"obsidian-parser\"} | json | note_name != \"\", note_name)",
         "hide": 0,
         "includeAll": true,
         "label": "Note",
         "multi": true,
         "name": "note",
         "options": [],
-        "query": "label_values({job=\"obsidian-parser\"}, note_name)",
+        "query": "label_values({job=\"obsidian-parser\"} | json | note_name != \"\", note_name)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
