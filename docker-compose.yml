@@ -33,7 +33,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./logs:/app/logs:ro
+      - ./logs:/app/logs
       - ./parse_notes.py:/app/parse_notes.py:ro
       - ./config.yaml:/app/config.yaml:ro
       - "/Users/nic/NVDH Dropbox/Nicole van der Hoeven/DownloadMyBrain/dmb-obsidian:/app/vault:ro"

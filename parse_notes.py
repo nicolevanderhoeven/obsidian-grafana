@@ -254,13 +254,30 @@ def parse_obsidian_vault_metrics_only(vault_path: str) -> None:
 
 
 def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
-    """Parse all markdown files in the Obsidian vault and output to JSON."""
+    """Parse all markdown files in the Obsidian vault and output to JSON.
+    
+    Uses event-based logging: only logs notes that were modified since the last run.
+    """
     vault_path = Path(vault_path)
     if not vault_path.exists():
         raise ValueError(f"Vault path does not exist: {vault_path}")
     
     vault_name = vault_path.name
     entries = []
+    
+    # Get the last run timestamp
+    last_run_file = Path(output_file).parent / '.last_run'
+    last_run_time = None
+    if last_run_file.exists():
+        try:
+            with open(last_run_file, 'r') as f:
+                last_run_str = f.read().strip()
+                last_run_time = datetime.fromisoformat(last_run_str)
+                logging.info(f"Last run was at: {last_run_time}")
+        except Exception as e:
+            logging.warning(f"Could not read last run time: {e}. Processing all files.")
+    else:
+        logging.info("No last run file found. Processing all files.")
     
     # Find all markdown files
     md_files = list(vault_path.rglob("*.md"))
@@ -279,6 +296,18 @@ def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
             basic_stats = extract_basic_stats(file_path)
             frontmatter_metadata = extract_frontmatter_metadata(file_path)
             timestamps = get_file_timestamps(file_path)
+            
+            # Check if note was modified since last run (event-based logging)
+            if last_run_time is not None:
+                modified_at_str = timestamps.get('modified_at')
+                if modified_at_str:
+                    try:
+                        modified_at = datetime.fromisoformat(modified_at_str)
+                        if modified_at <= last_run_time:
+                            # Skip this file - not modified since last run
+                            continue
+                    except Exception as e:
+                        logging.debug(f"Could not parse modified_at for {relative_path}: {e}")
             
             # Combine all metadata
             all_metadata = {
@@ -316,13 +345,34 @@ def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
             logging.error(f"Error processing {file_path}: {e}")
             continue
     
-    # Write to output file
+    # Record the current time before writing (for next run)
+    current_run_time = datetime.utcnow()
+    
+    # Write to output file (event-based logging: only append changes)
     try:
-        with open(output_file, 'w', encoding='utf-8') as f:
-            for entry in entries:
-                f.write(json.dumps(entry) + '\n')
+        if entries:
+            # Append to output file
+            with open(output_file, 'a', encoding='utf-8') as f:
+                for entry in entries:
+                    f.write(json.dumps(entry) + '\n')
+            
+            logging.info(f"Appended {len(entries)} new/modified entries to {output_file}")
+        else:
+            logging.info("No new or modified notes to log")
         
-        logging.info(f"Wrote {len(entries)} entries to {output_file}")
+        # Update the last run timestamp
+        with open(last_run_file, 'w') as f:
+            f.write(current_run_time.isoformat())
+        logging.info(f"Updated last run time to {current_run_time}")
+        
+        # Optional: Rotate log file if it gets too large (keep last 50MB)
+        max_file_size = 50 * 1024 * 1024  # 50MB
+        if os.path.exists(output_file) and os.path.getsize(output_file) > max_file_size:
+            timestamp = current_run_time.strftime('%Y%m%d_%H%M%S')
+            rotated_file = f"{output_file}.{timestamp}"
+            os.rename(output_file, rotated_file)
+            logging.info(f"Rotated log file to {rotated_file}")
+            
     except Exception as e:
         logging.error(f"Error writing to output file: {e}")
         raise
