@@ -30,13 +30,14 @@ obsidian_tags_total = Counter('obsidian_tags_total', 'Total number of unique tag
 obsidian_notes_gauge = Gauge('obsidian_notes_count', 'Current number of unique notes', ['vault'])
 obsidian_words_gauge = Gauge('obsidian_words_total', 'Current total word count', ['vault'])
 obsidian_tags_gauge = Gauge('obsidian_tags_count', 'Current number of unique tags', ['vault'])
+obsidian_wikilinks_gauge = Gauge('obsidian_wikilinks_total', 'Current total number of wikilinks', ['vault'])
 
 # Global state for metrics
 metrics_data = {
     'unique_notes': set(),
     'unique_tags': set(),
     'total_words': 0,
-    'vault_counts': defaultdict(lambda: {'notes': set(), 'tags': set(), 'words': 0})
+    'vault_counts': defaultdict(lambda: {'notes': set(), 'tags': set(), 'words': 0, 'wikilinks': 0})
 }
 
 
@@ -69,7 +70,7 @@ def start_metrics_server(port: int = 8080):
     return server
 
 
-def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str]):
+def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str], wikilinks_count: int = 0):
     """Update Prometheus metrics with new note data."""
     global metrics_data
     
@@ -78,6 +79,7 @@ def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str])
     metrics_data['total_words'] += word_count
     metrics_data['vault_counts'][vault]['notes'].add(note_name)
     metrics_data['vault_counts'][vault]['words'] += word_count
+    metrics_data['vault_counts'][vault]['wikilinks'] += wikilinks_count
     
     # Add tags
     for tag in tags:
@@ -94,6 +96,7 @@ def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str])
     obsidian_notes_gauge.labels(vault=vault).set(len(metrics_data['vault_counts'][vault]['notes']))
     obsidian_words_gauge.labels(vault=vault).set(metrics_data['vault_counts'][vault]['words'])
     obsidian_tags_gauge.labels(vault=vault).set(len(metrics_data['vault_counts'][vault]['tags']))
+    obsidian_wikilinks_gauge.labels(vault=vault).set(metrics_data['vault_counts'][vault]['wikilinks'])
 
 
 def setup_logging(log_level: str = "INFO") -> None:
@@ -242,7 +245,12 @@ def parse_obsidian_vault_metrics_only(vault_path: str) -> None:
             if 'inline_tags' in all_metadata:
                 tags.extend([tag.strip() for tag in all_metadata['inline_tags'].split(',') if tag.strip()])
             
-            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags)
+            # Count wikilinks
+            wikilinks_count = 0
+            if 'wikilinks' in all_metadata:
+                wikilinks_count = len([link.strip() for link in all_metadata['wikilinks'].split(',') if link.strip()])
+            
+            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags, wikilinks_count)
             
             logging.debug(f"Processed: {relative_path}")
             
@@ -337,7 +345,12 @@ def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
             if 'inline_tags' in all_metadata:
                 tags.extend([tag.strip() for tag in all_metadata['inline_tags'].split(',') if tag.strip()])
             
-            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags)
+            # Count wikilinks
+            wikilinks_count = 0
+            if 'wikilinks' in all_metadata:
+                wikilinks_count = len([link.strip() for link in all_metadata['wikilinks'].split(',') if link.strip()])
+            
+            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags, wikilinks_count)
             
             logging.debug(f"Processed: {relative_path}")
             

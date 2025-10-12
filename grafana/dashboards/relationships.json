@@ -90,90 +90,11 @@
       },
       "targets": [
         {
-          "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap wikilinks [5m] | note_name != \"\"))",
+          "expr": "sum(count_over_time({job=\"obsidian-parser\"} |= \"wikilinks\" [5m]))",
           "refId": "A"
         }
       ],
-      "title": "Wikilinks per Note Over Time",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Loki",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "vis": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap inline_tags [5m] | note_name != \"\"))",
-          "refId": "A"
-        }
-      ],
-      "title": "Inline Tags per Note Over Time",
+      "title": "Notes with Wikilinks Over Time",
       "type": "timeseries"
     },
     {
@@ -225,7 +146,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "count(count by (note_name) ({job=\"obsidian-parser\"} | json | wikilinks != \"\" | note_name != \"\"))",
+          "expr": "count_over_time({job=\"obsidian-parser\"} |= \"wikilinks\" [$__range])",
           "refId": "A"
         }
       ],
@@ -281,204 +202,12 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum(avg_over_time({job=\"obsidian-parser\" | json | __error__=\"\" | unwrap wikilinks [5m]))",
+          "expr": "count_over_time({job=\"obsidian-parser\"} |= \"wikilinks\" [$__range])",
           "refId": "A"
         }
       ],
-      "title": "Total Wikilinks",
+      "title": "Total Wikilink References",
       "type": "stat"
-    },
-    {
-      "datasource": "Loki",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 12,
-        "y": 8
-      },
-      "id": 5,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "8.0.0",
-      "targets": [
-        {
-          "expr": "count(count by (note_name) ({job=\"obsidian-parser\"} | json | inline_tags != \"\" | note_name != \"\"))",
-          "refId": "A"
-        }
-      ],
-      "title": "Notes with Inline Tags",
-      "type": "stat"
-    },
-    {
-      "datasource": "Loki",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 18,
-        "y": 8
-      },
-      "id": 6,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "8.0.0",
-      "targets": [
-        {
-          "expr": "sum(avg_over_time({job=\"obsidian-parser\" | json | __error__=\"\" | unwrap inline_tags [5m]))",
-          "refId": "A"
-        }
-      ],
-      "title": "Total Inline Tags",
-      "type": "stat"
-    },
-    {
-      "datasource": "Loki",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "vis": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 16
-      },
-      "id": 7,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap wikilinks [1h] | note_name != \"\"))",
-          "refId": "A",
-          "legendFormat": "{{note_name}}"
-        }
-      ],
-      "title": "Wikilinks Over Time by Note (Last Hour)",
-      "type": "timeseries"
     }
   ],
   "refresh": "5s",
@@ -489,34 +218,7 @@
     "relationships"
   ],
   "templating": {
-    "list": [
-      {
-        "allValue": null,
-        "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": "Loki",
-        "definition": "label_values({job=\"obsidian-parser\"} | json | note_name != \"\", note_name)",
-        "hide": 0,
-        "includeAll": true,
-        "label": "Note",
-        "multi": true,
-        "name": "note",
-        "options": [],
-        "query": "label_values({job=\"obsidian-parser\"} | json | note_name != \"\", note_name)",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
-      }
-    ]
+    "list": []
   },
   "time": {
     "from": "now-1h",
