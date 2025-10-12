@@ -187,7 +187,6 @@ def get_file_timestamps(file_path: Path) -> Dict[str, Any]:
 def create_loki_labels(note_name: str, vault_name: str, metadata: Dict[str, Any]) -> Dict[str, str]:
     """Create Loki labels from metadata."""
     labels = {
-        'note_name': note_name,
         'vault': vault_name,
         'job': 'obsidian-parser'
     }

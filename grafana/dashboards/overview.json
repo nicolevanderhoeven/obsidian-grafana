@@ -601,25 +601,19 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "{job=\"obsidian-parser\"} | json",
+          "expr": "{job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\"",
           "refId": "A",
           "legendFormat": "",
-          "maxLines": 1000
+          "maxLines": 100
         }
       ],
+      "timeFrom": "12h",
       "title": "Recently Updated Notes",
       "transformations": [
         {
           "id": "extractFields",
           "options": {
             "source": "Line",
-            "format": "json"
-          }
-        },
-        {
-          "id": "extractFields",
-          "options": {
-            "source": "line",
             "format": "json"
           }
         },
@@ -643,11 +637,30 @@
           }
         },
         {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "note_name": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "groupby"
+              },
+              "modified_at": {
+                "aggregations": [
+                  "max"
+                ],
+                "operation": "aggregate"
+              }
+            }
+          }
+        },
+        {
           "id": "sortBy",
           "options": {
             "sort": [
               {
-                "field": "modified_at",
+                "field": "modified_at (max)",
                 "desc": true
               }
             ]
@@ -658,12 +671,12 @@
           "options": {
             "excludeByName": {},
             "indexByName": {
-              "note_name": 0,
-              "modified_at": 1
+              "note_name (lastNotNull)": 0,
+              "modified_at (max)": 1
             },
             "renameByName": {
-              "note_name": "Filename",
-              "modified_at": "Time Modified"
+              "note_name (lastNotNull)": "Filename",
+              "modified_at (max)": "Time Modified"
             }
           }
         },
