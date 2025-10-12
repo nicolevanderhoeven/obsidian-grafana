@@ -13,7 +13,7 @@ import logging
 import argparse
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -176,7 +176,8 @@ def get_file_timestamps(file_path: Path) -> Dict[str, Any]:
         stat = file_path.stat()
         return {
             'created_at': datetime.fromtimestamp(stat.st_ctime).isoformat(),
-            'modified_at': datetime.fromtimestamp(stat.st_mtime).isoformat()
+            'modified_at': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            'modified_at_timestamp': stat.st_mtime  # Keep raw timestamp for comparison
         }
     except Exception as e:
         logging.warning(f"Error getting timestamps for {file_path}: {e}")
@@ -229,11 +230,11 @@ def parse_obsidian_vault_metrics_only(vault_path: str) -> None:
             frontmatter_metadata = extract_frontmatter_metadata(file_path)
             timestamps = get_file_timestamps(file_path)
             
-            # Combine all metadata
+            # Combine all metadata (excluding internal timestamp field)
             all_metadata = {
                 **basic_stats,
                 **frontmatter_metadata,
-                **timestamps,
+                **{k: v for k, v in timestamps.items() if k != 'modified_at_timestamp'},
                 'file_path': relative_path,
                 'note_name': note_name
             }
@@ -307,21 +308,26 @@ def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
             
             # Check if note was modified since last run (event-based logging)
             if last_run_time is not None:
-                modified_at_str = timestamps.get('modified_at')
-                if modified_at_str:
+                modified_at_timestamp = timestamps.get('modified_at_timestamp')
+                if modified_at_timestamp:
                     try:
-                        modified_at = datetime.fromisoformat(modified_at_str)
-                        if modified_at <= last_run_time:
+                        # last_run_time is stored as UTC but parsed as naive datetime
+                        # We need to treat it as UTC when converting to timestamp
+                        # Create a UTC-aware datetime from the naive one
+                        last_run_utc = last_run_time.replace(tzinfo=timezone.utc)
+                        last_run_timestamp = last_run_utc.timestamp()
+                        # File mtime is already a timestamp (seconds since epoch)
+                        if modified_at_timestamp <= last_run_timestamp:
                             # Skip this file - not modified since last run
                             continue
                     except Exception as e:
-                        logging.debug(f"Could not parse modified_at for {relative_path}: {e}")
+                        logging.debug(f"Could not compare timestamps for {relative_path}: {e}")
             
-            # Combine all metadata
+            # Combine all metadata (excluding internal timestamp field)
             all_metadata = {
                 **basic_stats,
                 **frontmatter_metadata,
-                **timestamps,
+                **{k: v for k, v in timestamps.items() if k != 'modified_at_timestamp'},
                 'file_path': relative_path,
                 'note_name': note_name
             }
