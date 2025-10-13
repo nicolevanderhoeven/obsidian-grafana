@@ -1,27 +1,158 @@
 # Obsidian to Grafana Monitoring System
 
-A monitoring system that parses your Obsidian Markdown notes and visualizes metadata in Grafana dashboards. This system tracks note statistics, frontmatter properties, tags, and relationships over time.
+A comprehensive monitoring and analytics system for Obsidian vaults. Transform your Markdown notes into time-series metrics and interactive dashboards using industry-standard observability tools (Loki, Prometheus, Grafana, Alloy).
+
+**What it does:**
+- 📊 Tracks note statistics (word count, line count, file size) over time
+- 🏷️ Analyzes tags, frontmatter fields, and metadata patterns
+- 🔗 Visualizes note relationships through wikilinks
+- 📈 Provides real-time metrics and historical trend analysis
+- ⚡ Uses event-based logging to efficiently track only modified notes
+
+**Why it's useful:**
+- Understand your writing habits and vault growth patterns
+- Monitor content organization and tagging consistency
+- Identify highly connected notes and knowledge clusters
+- Track progress on notes with specific frontmatter (status, priority, etc.)
+- Gain insights into your personal knowledge management system
 
 ## Architecture
 
-```
-Python Parser → JSON Logs → Alloy → Loki → Grafana Dashboards
+This system uses a dual-path architecture for comprehensive monitoring:
+
+```mermaid
+graph TB
+    subgraph "Data Sources"
+        Vault[("🗂️ Obsidian Vault<br/>Markdown Files")]
+    end
+    
+    subgraph "Data Collection"
+        Parser["📝 Python Parser<br/>(parse_notes.py)<br/>• Extracts metadata<br/>• Event-based logging<br/>• Runs every 5 min"]
+        Cron["⏰ Cron Job<br/>(setup.sh)"]
+    end
+    
+    subgraph "Log Path (Historical Data)"
+        LogFile[("📄 JSON Logs<br/>obsidian_logs.json<br/>• Modified notes only<br/>• Append-only")]
+        Alloy["🔄 Grafana Alloy<br/>:12345<br/>• Reads JSON logs<br/>• Extracts labels<br/>• Forwards to Loki"]
+        Loki[("📊 Loki<br/>:3100<br/>• Log storage<br/>• Time-series queries<br/>• Label indexing")]
+    end
+    
+    subgraph "Metrics Path (Real-time State)"
+        MetricsExp["📈 Metrics Exporter<br/>:8080/metrics<br/>• HTTP endpoint<br/>• Prometheus format"]
+        Prometheus[("📉 Prometheus<br/>:9090<br/>• Metrics storage<br/>• Scrapes every 15s")]
+    end
+    
+    subgraph "Visualization"
+        Grafana["📺 Grafana<br/>:3000<br/>• 4 Dashboards<br/>• Interactive filtering<br/>• Dual datasources"]
+        
+        subgraph "Dashboards"
+            D1["📋 Overview"]
+            D2["📈 Time Series"]
+            D3["🔗 Relationships"]
+            D4["🏷️ Types"]
+        end
+    end
+    
+    Vault -->|Read .md files| Parser
+    Cron -.->|Triggers every 5m| Parser
+    
+    Parser -->|Write events| LogFile
+    Parser -->|Expose metrics| MetricsExp
+    
+    LogFile -->|Tail & parse| Alloy
+    Alloy -->|Push logs| Loki
+    
+    MetricsExp -->|HTTP scrape| Prometheus
+    
+    Loki -->|LogQL queries| Grafana
+    Prometheus -->|PromQL queries| Grafana
+    
+    Grafana --> D1
+    Grafana --> D2
+    Grafana --> D3
+    Grafana --> D4
+    
+    style Vault fill:#e1f5ff
+    style Parser fill:#fff4e6
+    style LogFile fill:#f3e5f5
+    style Alloy fill:#e8f5e9
+    style Loki fill:#fff9c4
+    style MetricsExp fill:#fce4ec
+    style Prometheus fill:#e0f2f1
+    style Grafana fill:#f1f8e9
 ```
 
-- **Python Parser**: Extracts metadata from Obsidian notes every 5 minutes
-- **Alloy**: Collects JSON logs and forwards them to Loki with proper labels
-- **Loki**: Stores timestamped log entries for querying
-- **Grafana**: Visualizes the data with interactive dashboards
+### Data Flow
+
+**Path 1: Log-Based (Event Tracking)**
+1. **Python Parser** extracts metadata from all `.md` files in the Obsidian vault
+2. Parser checks last run timestamp and only processes **modified notes** (event-based)
+3. Structured JSON entries are **appended** to `obsidian_logs.json`
+4. **Alloy** tails the log file, parses JSON, and extracts labels (vault, tags, frontmatter fields)
+5. **Loki** stores log entries with labels for efficient querying
+6. **Grafana** queries Loki using LogQL to display historical trends and relationships
+
+**Path 2: Metrics-Based (Current State)**
+1. **Metrics Exporter** service runs the parser in metrics-only mode
+2. Parser scans the entire vault and updates **Prometheus metrics**
+3. Metrics are exposed via HTTP endpoint at `:8080/metrics`
+4. **Prometheus** scrapes metrics every 15 seconds
+5. **Grafana** queries Prometheus using PromQL for real-time statistics
+
+### Components
+
+| Component | Purpose | Port | Technology |
+|-----------|---------|------|------------|
+| Python Parser | Metadata extraction and metrics generation | N/A | Python 3, frontmatter, PyYAML |
+| Cron Job | Scheduled execution (every 5 minutes) | N/A | System cron |
+| Alloy | Log collection and forwarding | 12345 | Grafana Alloy |
+| Loki | Log storage and querying | 3100 | Grafana Loki 3.0 |
+| Prometheus | Metrics storage and TSDB | 9090 | Prometheus |
+| Metrics Exporter | Prometheus metrics endpoint | 8080 | Python + prometheus_client |
+| Grafana | Visualization and dashboards | 3000 | Grafana 11.6 |
+
+**Key Features:**
+- 🔄 **Event-Based Logging**: Only modified notes are logged, reducing storage by 90%+
+- 📊 **Dual Data Sources**: Combines historical logs (Loki) with real-time metrics (Prometheus)
+- 🏷️ **Label-Based Indexing**: Frontmatter fields become Loki labels for fast filtering
+- 🐳 **Containerized**: All services run in Docker with docker-compose
+- ⚡ **Efficient**: Incremental parsing with timestamp tracking
 
 ## Features
 
-- **Basic Statistics**: Word count, line count, file size tracking over time
-- **Frontmatter Analysis**: YAML frontmatter fields as Loki labels for filtering
-- **Type Analysis**: Distribution and usage patterns of frontmatter types (NPC, PC, audio, etc.)
-- **Tag Tracking**: Both frontmatter tags and inline `#tags`
-- **Note Relationships**: Wikilinks (`[[note]]`) and backlink analysis
-- **Time Series Visualization**: Track how your notes evolve over time
-- **Interactive Dashboards**: Filter by tags, categories, note names, and types
+### Data Collection
+- **Basic Statistics**: Tracks word count, line count, character count, and file size for every note
+- **Frontmatter Extraction**: Parses all YAML frontmatter fields (status, category, priority, type, etc.)
+- **Tag Tracking**: Captures both frontmatter `tags` arrays and inline `#hashtags`
+- **Wikilink Detection**: Identifies `[[note]]` references for relationship mapping
+- **File Timestamps**: Records creation and modification times for each note
+- **Event-Based Logging**: Only logs notes modified since last run, reducing storage and processing overhead
+
+### Monitoring & Metrics
+- **Prometheus Metrics**: Real-time metrics exposed via HTTP endpoint
+  - Total note count per vault
+  - Total word count across all notes
+  - Unique tag count
+  - Total wikilink count
+- **Automatic Log Rotation**: Rotates logs when they exceed 50MB to manage disk space
+- **Scheduled Parsing**: Automated cron job runs every 5 minutes to capture changes
+
+### Visualization
+Four pre-configured Grafana dashboards:
+
+1. **Overview Dashboard**: High-level vault statistics, processing rate, and recent activity
+2. **Time Series Dashboard**: Individual note metrics tracked over time with filtering
+3. **Relationships Dashboard**: Wikilink network analysis and backlink visualization
+4. **Types Dashboard**: Distribution and patterns of frontmatter types (e.g., NPC, PC, audio)
+
+**Interactive Filtering**: All dashboards support filtering by vault, tags, categories, note names, and frontmatter fields
+
+### Technical Features
+- **Containerized Deployment**: All services run in Docker with docker-compose
+- **YAML Configuration**: Simple config file for easy customization
+- **Dual Data Paths**: Combines log-based event tracking with real-time metrics
+- **Label-Based Indexing**: Frontmatter fields become Loki labels for efficient querying
+- **Hidden File Exclusion**: Automatically skips hidden files and `.` directories
 
 ## Quick Start
 
@@ -89,15 +220,14 @@ Check that logs are being generated:
 tail -f /tmp/obsidian_logs.json
 ```
 
-### 6. View Dashboards
+### 5. View Dashboards
 
 Open Grafana at http://localhost:3000 and explore the pre-configured dashboards:
 
-- **Obsidian Overview**: High-level statistics and activity
-- **Time Series**: Word count, line count, and file size trends
-- **Tag Analysis**: Tag usage patterns and distributions
+- **Obsidian Overview**: High-level vault statistics and recent activity
+- **Time Series**: Word count, line count, and file size trends over time
 - **Note Relationships**: Wikilinks and backlink analysis
-- **Frontmatter Types Analysis**: Distribution and usage of different frontmatter types
+- **Frontmatter Types**: Distribution and usage patterns of different frontmatter types
 
 ## Manual Usage
 
@@ -127,37 +257,85 @@ The dashboards use LogQL queries to filter and aggregate data. See `.cursor/plan
 
 ## Configuration
 
-### Python Parser
+### Python Parser (`parse_notes.py`)
 
-The parser extracts the following metadata:
+The parser extracts comprehensive metadata from each note:
 
-- **Basic Stats**: `word_count`, `line_count`, `file_size`, `char_count`
-- **Timestamps**: `created_at`, `modified_at`
-- **Frontmatter**: All YAML frontmatter fields (prefixed with `frontmatter_`)
-- **Tags**: Both frontmatter `tags` and inline `#tags`
-- **Wikilinks**: `[[note]]` references for relationship analysis
+**Extracted Fields:**
+- **Basic Stats**: `word_count`, `line_count`, `char_count`, `file_size`
+- **Timestamps**: `created_at`, `modified_at` (with internal timestamp tracking for event-based logging)
+- **Frontmatter**: All YAML frontmatter fields exported as `frontmatter_*` labels
+  - Supports strings, numbers, booleans, and lists (lists are comma-separated)
+  - Common fields: `frontmatter_status`, `frontmatter_category`, `frontmatter_priority`, `frontmatter_type`
+- **Tags**: 
+  - `tags`: Frontmatter tags (from YAML array)
+  - `inline_tags`: Inline `#hashtags` extracted via regex
+- **Wikilinks**: `[[note]]` references parsed and stored for relationship analysis
+- **File Info**: `note_name`, `file_path` (relative to vault root)
+
+**Event-Based Logging:**
+- Tracks last run timestamp in `.last_run` file
+- Only processes notes modified since last run
+- Reduces log volume and processing time for large vaults
+
+**Configuration Options:**
+```yaml
+vault_path: "/path/to/vault"        # Required: Path to Obsidian vault
+output_file: "./logs/obsidian_logs.json"  # Where to write log entries
+log_level: "INFO"                   # DEBUG, INFO, WARNING, ERROR
+metrics_port: 8080                  # Prometheus metrics endpoint port
+start_metrics_server: false         # Enable/disable metrics server
+grafana_password: "admin"           # Grafana admin password
+```
 
 ### Alloy Configuration
 
-Alloy is configured to:
-- Watch `/tmp/obsidian_logs.json` for new entries
-- Extract labels from JSON structure
-- Forward to Loki with proper timestamps
-- Handle log rotation and cleanup
+Alloy serves as the log collector and forwarder:
+
+**Monitored Files:**
+- `obsidian_logs.json`: Structured JSON log entries from parser
+- `obsidian_parser.log`: Parser execution logs (for debugging)
+
+**Processing Pipeline:**
+1. Reads log files via `loki.source.file`
+2. Parses JSON and extracts labels via `loki.process`
+3. Converts frontmatter fields to Loki labels (vault, job, tags, frontmatter_*)
+4. Forwards to Loki with proper timestamps via `loki.write`
+
+**Label Extraction:**
+- `vault`: Vault name (from vault path)
+- `job`: Always `obsidian-parser`
+- `tags`: Comma-separated frontmatter tags
+- `frontmatter_*`: All frontmatter fields as individual labels
 
 ### Grafana Dashboards
 
-Five main dashboards are provided:
+Four pre-configured dashboards are automatically provisioned:
 
-1. **Overview**: Total notes, processing rate, recent activity
-2. **Time Series**: Individual note metrics over time
-3. **Tag Analysis**: Tag usage patterns and distributions
-4. **Relationships**: Wikilinks and note connections
-5. **Frontmatter Types Analysis**: Distribution and usage of different frontmatter types
+1. **Overview (`overview.json`)**: 
+   - Total notes count
+   - Processing rate and throughput
+   - Recent activity timeline
+   - Vault-level statistics
 
-#### Frontmatter Types Analysis Dashboard
+2. **Time Series (`timeseries.json`)**: 
+   - Individual note metrics over time
+   - Word count, line count, file size trends
+   - Filtering by note name, tags, categories
 
-Analyzes the distribution and usage patterns of frontmatter types (NPC, PC, audio, etc.) with pie charts, time series, and vault breakdowns.
+3. **Relationships (`relationships.json`)**: 
+   - Wikilink network visualization
+   - Backlink analysis
+   - Note connection patterns
+
+4. **Frontmatter Types (`types.json`)**: 
+   - Distribution of frontmatter types (NPC, PC, audio, etc.)
+   - Type usage patterns over time
+   - Pie charts and time series by type
+
+**Data Sources:**
+- **Loki**: For log-based queries and event tracking
+- **Prometheus**: For real-time metrics and current state
 
 ## Troubleshooting
 
@@ -165,11 +343,22 @@ Analyzes the distribution and usage patterns of frontmatter types (NPC, PC, audi
 
 ```bash
 # Check parser logs
-tail -f /tmp/obsidian_parser.log
+tail -f ./logs/obsidian_parser.log
 
 # Run with debug logging
 python3 parse_notes.py --log-level DEBUG
+
+# Verify JSON logs are being created
+tail -f ./logs/obsidian_logs.json
+
+# Check last run timestamp
+cat ./logs/.last_run
 ```
+
+**Common Issues:**
+- **"Vault path does not exist"**: Ensure `vault_path` in `config.yaml` is correct
+- **No logs generated**: Check file permissions on the `logs/` directory
+- **Frontmatter not parsing**: Ensure YAML frontmatter is valid and uses `---` delimiters
 
 ### Docker Issues
 
@@ -177,62 +366,169 @@ python3 parse_notes.py --log-level DEBUG
 # Check container status
 docker-compose ps
 
-# View logs
+# View all logs
 docker-compose logs -f
 
-# Restart services
+# View specific service logs
+docker-compose logs -f grafana
+docker-compose logs -f loki
+docker-compose logs -f alloy
+docker-compose logs -f metrics-exporter
+
+# Restart specific service
+docker-compose restart grafana
+
+# Restart all services
 docker-compose restart
+
+# Rebuild after code changes
+docker-compose up -d --build
 ```
 
 ### Alloy Issues
 
-- Visit http://localhost:12345 for Alloy UI
-- Check that `/tmp/obsidian_logs.json` is being created
-- Verify Loki connectivity in Alloy logs
+- Visit http://localhost:12345 for Alloy UI and status
+- Check that `./logs/obsidian_logs.json` is being created and populated
+- Verify Loki connectivity in Alloy logs: `docker-compose logs alloy`
+- Ensure log files are mounted correctly in the container
+
+### Loki Issues
+
+```bash
+# Check Loki is receiving logs
+curl http://localhost:3100/ready
+
+# Query Loki directly
+curl -G http://localhost:3100/loki/api/v1/query \
+  --data-urlencode 'query={job="obsidian-parser"}' \
+  --data-urlencode 'limit=10'
+```
+
+### Prometheus Issues
+
+- Visit http://localhost:9090 to access Prometheus UI
+- Check targets at http://localhost:9090/targets to ensure metrics-exporter is UP
+- Verify metrics endpoint: `curl http://localhost:8080/metrics`
 
 ### Grafana Issues
 
-- Check datasource configuration at http://localhost:3000/datasources
-- Verify Loki is accessible from Grafana
-- Check dashboard queries in Explore view
+- **Datasources**: Check configuration at http://localhost:3000/datasources
+- **No data in dashboards**: 
+  - Verify Loki has data: use Explore view with query `{job="obsidian-parser"}`
+  - Check time range in dashboard (default is last 6 hours)
+  - Ensure parser has run at least once
+- **Authentication issues**: Check `GRAFANA_PASSWORD` in docker-compose or use default `admin/admin`
 
 ## File Structure
 
 ```
 obsidian-grafana/
-├── parse_notes.py          # Main Python parser
-├── requirements.txt        # Python dependencies
-├── config.yaml            # Configuration file (create from example)
-├── config.yaml.example    # Example configuration template
-├── setup.sh               # Setup script (starts system + cron job)
-├── docker-compose.yml     # Docker stack definition
+├── parse_notes.py                      # Main Python parser script
+├── requirements.txt                    # Python dependencies (pyyaml, frontmatter, prometheus-client)
+├── config.yaml                         # User configuration (git-ignored)
+├── config.yaml.example                 # Configuration template
+├── setup.sh                            # Setup script (starts Docker + cron)
+├── docker-compose.yml                  # Docker stack orchestration
+├── Dockerfile                          # Dockerfile for metrics exporter service
+├── README.md                           # Documentation (this file)
+│
 ├── alloy/
-│   └── config.alloy       # Alloy configuration
+│   └── config.alloy                    # Alloy log collection configuration
+│
 ├── grafana/
-│   ├── provisioning/      # Grafana provisioning
-│   └── dashboards/        # Dashboard JSON files
-└── README.md             # This file
+│   ├── provisioning/
+│   │   ├── dashboards/
+│   │   │   └── dashboards.yml          # Dashboard provisioning config
+│   │   └── datasources/
+│   │       ├── loki.yml                # Loki datasource configuration
+│   │       └── prometheus.yml          # Prometheus datasource configuration
+│   └── dashboards/
+│       ├── overview.json               # Overview dashboard
+│       ├── timeseries.json             # Time series dashboard
+│       ├── relationships.json          # Relationships dashboard
+│       └── types.json                  # Frontmatter types dashboard
+│
+├── logs/                               # Generated logs directory
+│   ├── obsidian_logs.json             # Structured log entries (appended)
+│   ├── obsidian_parser.log            # Parser execution logs
+│   └── .last_run                       # Last run timestamp for event-based logging
+│
+├── loki-config.yaml                    # Loki storage and limits configuration
+└── prometheus.yml                      # Prometheus scrape configuration
 ```
+
+**Generated Files:**
+- `logs/obsidian_logs.json`: Append-only log file with note metadata
+- `logs/obsidian_parser.log`: Parser execution logs (from cron)
+- `logs/.last_run`: Timestamp of last successful parser run
 
 ## Production Considerations
 
-This setup is designed for personal use. For production deployment, consider:
+This setup is optimized for personal use and local development. For production or multi-user deployments, consider:
 
-1. **Security**: Change default passwords and enable authentication
-2. **Persistence**: Ensure data volumes are properly backed up
-3. **Monitoring**: Add health checks and alerting
-4. **Scaling**: Consider using external databases for larger datasets
-5. **Network**: Use proper networking and firewall rules
+### Security
+- Change default Grafana password via `GRAFANA_PASSWORD` environment variable
+- Enable HTTPS/TLS for all web interfaces (Grafana, Prometheus, Alloy)
+- Use Docker secrets instead of plain-text config files for credentials
+- Implement authentication for Prometheus and Loki endpoints
+- Restrict network access using firewall rules or Docker network policies
+
+### Performance & Scaling
+- **Event-Based Logging**: Already implemented to reduce log volume
+- **Log Rotation**: Automatic rotation at 50MB; adjust `max_file_size` in parser if needed
+- **Loki Retention**: Configure retention policies in `loki-config.yaml` for long-term storage
+- **Prometheus Retention**: Adjust `--storage.tsdb.retention.time` in `docker-compose.yml`
+- **Parser Schedule**: Adjust cron frequency based on vault size and update frequency
+- **Label Cardinality**: Monitor Loki label cardinality; reduce frontmatter labels if needed
+
+### Data Persistence
+- Docker volumes (`loki_data`, `grafana_data`) persist data across container restarts
+- Back up these volumes regularly: `docker run --rm -v loki_data:/data -v $(pwd):/backup ubuntu tar czf /backup/loki_data_backup.tar.gz -C /data .`
+- Consider external storage (NFS, S3) for long-term archival
+
+### Monitoring & Reliability
+- Add health checks to `docker-compose.yml` for all services
+- Configure Grafana alerting for parser failures or data gaps
+- Monitor disk space for log files and Docker volumes
+- Set up log aggregation for cron job failures
+
+### Multi-Vault Support
+- Parser already supports multiple vaults via `vault` label
+- Run separate parser instances with different `config.yaml` files
+- All vaults can share the same Loki/Grafana infrastructure
 
 ## Contributing
 
-Feel free to submit issues and enhancement requests! Some ideas for improvements:
+Contributions are welcome! Here are some ideas for enhancements:
 
-- More sophisticated relationship analysis
-- Note similarity detection
-- Writing pattern analysis
-- Export capabilities
-- Mobile-friendly dashboards
+### Parser Enhancements
+- Support for additional frontmatter types and custom fields
+- Dataview field extraction (inline fields like `field:: value`)
+- Image and attachment tracking
+- Daily note pattern detection
+- Metadata caching for faster incremental parsing
+
+### Visualization Improvements
+- Network graph visualization for wikilink relationships
+- Heatmap of writing activity by time of day/week
+- Note similarity clustering
+- Tag co-occurrence analysis
+- Word cloud dashboards
+
+### Integration Features
+- Webhook support for real-time updates
+- API endpoint for external integrations
+- Obsidian plugin for direct integration
+- Export capabilities (CSV, JSON, etc.)
+- Multi-vault comparison views
+
+### Infrastructure
+- Kubernetes deployment manifests
+- CI/CD pipeline examples
+- Automated backup scripts
+- Performance benchmarking tools
+
+To contribute, please open an issue to discuss your idea before submitting a pull request.
 
 ## License
 
