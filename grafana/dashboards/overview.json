@@ -446,7 +446,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (vault) (count_over_time({job=\"obsidian-parser\"} | json | modified_at != \"\" [5m]))",
+          "expr": "sum by (vault) (count_over_time({job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\" [5m]))",
           "refId": "A",
           "legendFormat": "{{vault}}"
         }
