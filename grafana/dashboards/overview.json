@@ -511,13 +511,52 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum(count_over_time({job=\"obsidian-parser\"} | json | modified_at != \"\" [1h]))",
+          "expr": "{job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\"",
           "refId": "A",
-          "instant": true
+          "legendFormat": "",
+          "maxLines": 1000
         }
       ],
-      "title": "Notes Updated (Last Hour)",
-      "type": "stat"
+      "title": "Notes Updated",
+      "type": "stat",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "json"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": ["note_name"]
+            }
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "note_name": {
+                "aggregations": [
+                  "count"
+                ],
+                "operation": "groupby"
+              }
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ]
+          }
+        }
+      ]
     },
     {
       "datasource": "Loki",
