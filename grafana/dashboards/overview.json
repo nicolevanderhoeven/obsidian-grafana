@@ -607,7 +607,6 @@
           "maxLines": 100
         }
       ],
-      "timeFrom": "12h",
       "title": "Recently Updated Notes",
       "transformations": [
         {
