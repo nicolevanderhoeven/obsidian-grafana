@@ -497,6 +497,99 @@ This setup is optimized for personal use and local development. For production o
 - Run separate parser instances with different `config.yaml` files
 - All vaults can share the same Loki/Grafana infrastructure
 
+## OpenClaw Integration
+
+This system can feed an [OpenClaw](https://docs.openclaw.ai) agent with structured vault data so it can answer questions like "What should I work on next?" or "Which notes are linked to but not fleshed out?"
+
+### How It Works
+
+The `export_vault_index.py` script scans the vault and produces two Markdown files:
+
+- **`vault_index_summary.md`** (~500 lines): Top 50 most-backlinked notes, top 50 underdeveloped notes, recent modifications, and vault breakdown by status/type/folder/tags. Fits in an LLM context window.
+- **`vault_index_full.md`** (all notes): Per-note metadata block for every note in the vault, sorted by backlink count. Searchable via `memory_search`.
+
+OpenClaw does all the reasoning — the index provides raw structural data only (backlinks, word counts, tags, headings, etc.), not precomputed recommendations.
+
+### Per-Note Metadata
+
+Each note block in the index includes:
+
+- Note name, relative path, word count
+- Backlink count and list (which notes link TO this note)
+- Outbound wikilinks list
+- Tags (frontmatter + inline)
+- Frontmatter fields (status, type, category, etc.)
+- Aliases
+- Creation and modification dates
+- Heading outline (H1-H3)
+- External URL count
+
+### Running the Index Generator
+
+```bash
+# Using config.yaml (reads vault_path and index_output_path)
+python3 export_vault_index.py
+
+# Override vault path
+python3 export_vault_index.py --vault-path /path/to/vault
+
+# Override output directory
+python3 export_vault_index.py --output-dir /path/to/syncthing/folder
+
+# Debug logging
+python3 export_vault_index.py --log-level DEBUG
+```
+
+The index runs automatically every 5 minutes via the cron job set up by `setup.sh`.
+
+### Syncthing Setup
+
+[Syncthing](https://syncthing.net/) syncs the vault and index files to the OpenClaw VM. The index files are kept **outside** the vault (to avoid Obsidian trying to index them) in a sibling directory.
+
+**Local machine:**
+
+| Folder | Path | Direction |
+|--------|------|-----------|
+| `dmb-obsidian` | Your vault directory | Send-only |
+| `openclaw-index` | `index_output_path` from config (e.g. `DownloadMyBrain/openclaw-index/`) | Send-only |
+| `openclaw-output` | Local folder for OpenClaw responses | Receive-only |
+
+**Remote VM (OpenClaw):**
+
+| Folder | Path | Direction |
+|--------|------|-----------|
+| `dmb-obsidian` | VM vault directory | Receive-only |
+| `openclaw-index` | VM index directory | Receive-only |
+| `openclaw-output` | OpenClaw writable folder | Send-only |
+
+**Setup steps:**
+
+1. Install Syncthing on both machines:
+   - macOS: `brew install syncthing`
+   - Linux: `sudo apt install syncthing` or see [syncthing.net/downloads](https://syncthing.net/downloads/)
+2. Start Syncthing on both machines and note the device IDs
+3. Add each device as a remote on the other machine
+4. Share the three folders with the directions shown above
+5. Set `index_output_path` in `config.yaml` to a directory outside the vault (e.g. a sibling folder)
+
+**Security hardening (recommended for remote VMs):**
+
+- Disable global discovery: Settings > Connections > uncheck "Global Discovery"
+- Disable relays: Settings > Connections > uncheck "Enable Relaying"
+- Use static addresses: Add the VM's IP:port as a device address instead of `dynamic`
+- Syncthing encrypts all traffic (TLS) and authenticates via Ed25519 device IDs
+- Main risk is data at rest on the VM — apply standard hardening (SSH keys only, firewall, OS updates)
+
+### Example OpenClaw Questions
+
+Once the vault and index are synced, OpenClaw can answer:
+
+- **"What should I work on next?"** — reads `vault_index_summary.md`, sees top backlinked/underdeveloped notes, reasons about priorities
+- **"Which notes are linked to but not fleshed out?"** — looks at the "Linked But Underdeveloped" section in the summary
+- **"Review my draft on [topic]"** — finds the note in the index, then reads the actual file from the synced vault
+- **"What notes mention [topic]?"** — uses `memory_search` over the full index and/or vault content
+- **"What are my most connected ideas?"** — reads the "Most Backlinked Notes" section
+
 ## Contributing
 
 Contributions are welcome! Here are some ideas for enhancements:
