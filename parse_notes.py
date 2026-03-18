@@ -171,11 +171,23 @@ def extract_frontmatter_metadata(file_path: Path) -> Dict[str, Any]:
 
 
 def get_file_timestamps(file_path: Path) -> Dict[str, Any]:
-    """Get file creation and modification timestamps."""
+    """Get file creation and modification timestamps.
+    
+    Uses st_birthtime (true creation time) on macOS when available,
+    falls back to st_ctime (inode change time) on other platforms.
+    """
     try:
         stat = file_path.stat()
+        
+        # Use st_birthtime (true creation time) if available (macOS)
+        # Fall back to st_ctime (inode change time) on other platforms
+        try:
+            created_at = datetime.fromtimestamp(stat.st_birthtime).isoformat()
+        except AttributeError:
+            created_at = datetime.fromtimestamp(stat.st_ctime).isoformat()
+        
         return {
-            'created_at': datetime.fromtimestamp(stat.st_ctime).isoformat(),
+            'created_at': created_at,
             'modified_at': datetime.fromtimestamp(stat.st_mtime).isoformat(),
             'modified_at_timestamp': stat.st_mtime  # Keep raw timestamp for comparison
         }
@@ -184,12 +196,49 @@ def get_file_timestamps(file_path: Path) -> Dict[str, Any]:
         return {}
 
 
+def load_known_files(known_files_path: Path) -> set:
+    """Load the set of known file paths from the state file.
+    
+    Returns an empty set if the file doesn't exist or is corrupted.
+    """
+    if not known_files_path.exists():
+        logging.info("No known files state found. All files will be treated as 'created'.")
+        return set()
+    
+    try:
+        with open(known_files_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return set(data)
+            else:
+                logging.warning(f"Invalid known files format. Expected list, got {type(data).__name__}.")
+                return set()
+    except (json.JSONDecodeError, IOError) as e:
+        logging.warning(f"Could not read known files state: {e}. All files will be treated as 'created'.")
+        return set()
+
+
+def save_known_files(known_files_path: Path, known_files: set) -> None:
+    """Save the set of known file paths to the state file."""
+    try:
+        with open(known_files_path, 'w', encoding='utf-8') as f:
+            json.dump(sorted(known_files), f, indent=2)
+        logging.debug(f"Saved {len(known_files)} known files to {known_files_path}")
+    except IOError as e:
+        logging.error(f"Could not save known files state: {e}")
+        raise
+
+
 def create_loki_labels(note_name: str, vault_name: str, metadata: Dict[str, Any]) -> Dict[str, str]:
     """Create Loki labels from metadata."""
     labels = {
         'vault': vault_name,
         'job': 'obsidian-parser'
     }
+    
+    # Add event_type if present
+    if 'event_type' in metadata:
+        labels['event_type'] = metadata['event_type']
     
     # Add tags as labels
     if 'tags' in metadata:
@@ -269,6 +318,7 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
     """Parse all markdown files in the Obsidian vault and output to JSON.
     
     Uses event-based logging: only logs notes that were modified since the last run.
+    Tracks known files to distinguish between 'created' and 'modified' events.
     """
     vault_path = Path(vault_path)
     if not vault_path.exists():
@@ -278,8 +328,14 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
     vault_name = vault_path.name
     entries = []
     
+    # Load known files state for event_type determination
+    output_dir = Path(output_file).parent
+    known_files_path = output_dir / '.known_files'
+    known_files = load_known_files(known_files_path)
+    initial_known_files_count = len(known_files)
+    
     # Get the last run timestamp
-    last_run_file = Path(output_file).parent / '.last_run'
+    last_run_file = output_dir / '.last_run'
     last_run_time = None
     if last_run_file.exists():
         try:
@@ -331,13 +387,21 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
                     except Exception as e:
                         logging.debug(f"Could not compare timestamps for {relative_path}: {e}")
             
+            # Determine event_type based on known files state
+            if relative_path in known_files:
+                event_type = 'modified'
+            else:
+                event_type = 'created'
+                known_files.add(relative_path)
+            
             # Combine all metadata (excluding internal timestamp field)
             all_metadata = {
                 **basic_stats,
                 **frontmatter_metadata,
                 **{k: v for k, v in timestamps.items() if k != 'modified_at_timestamp'},
                 'file_path': relative_path,
-                'note_name': note_name
+                'note_name': note_name,
+                'event_type': event_type
             }
             
             # Create Loki labels
@@ -391,6 +455,11 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
         with open(last_run_file, 'w') as f:
             f.write(current_run_time.isoformat())
         logging.info(f"Updated last run time to {current_run_time}")
+        
+        # Save the known files state
+        if len(known_files) > initial_known_files_count:
+            save_known_files(known_files_path, known_files)
+            logging.info(f"Known files: {initial_known_files_count} -> {len(known_files)} (+{len(known_files) - initial_known_files_count} new)")
         
         # Optional: Rotate log file if it gets too large (keep last 50MB)
         max_file_size = 50 * 1024 * 1024  # 50MB

@@ -507,11 +507,78 @@ curl -G http://localhost:3100/loki/api/v1/query \
   - Ensure parser has run at least once
 - **Authentication issues**: Check `GRAFANA_PASSWORD` in docker-compose or use default `admin/admin`
 
+## Backfill and Re-ingestion
+
+If you need to backfill `event_type` (created/modified) to existing log entries or re-ingest data into Loki, follow these steps.
+
+### Prerequisites
+
+The backfill script adds `event_type` labels to distinguish between newly created notes and modified notes:
+- **created**: First time a note appears in the logs
+- **modified**: Subsequent appearances of the same note
+
+### Backfill Process
+
+**Important**: The cron job runs every 5 minutes on the host. It must be paused during backfill and re-ingestion to prevent duplicates or corruption.
+
+```bash
+# 1. Stop the cron job
+crontab -l > /tmp/cron_backup && crontab -r
+
+# 2. Run the backfill script (creates backup automatically)
+python3 backfill_event_type.py
+
+# Or do a dry run first to see what would change
+python3 backfill_event_type.py --dry-run
+
+# 3. Verify the backfill succeeded
+head -5 ./logs/obsidian_logs.json  # Check sample entries have event_type
+wc -l ./logs/obsidian_logs.json    # Verify entry count
+
+# 4. Stop all containers
+docker compose down
+
+# 5. Remove Loki and Alloy data volumes (this clears all stored logs)
+docker volume rm obsidian-grafana_loki_data obsidian-grafana_alloy_data
+
+# 6. Restart containers (Alloy will re-read the entire log file)
+docker compose up -d
+
+# 7. Restore the cron job
+crontab /tmp/cron_backup
+```
+
+### Rollback
+
+If something goes wrong:
+
+```bash
+# Restore the backup log file
+cp ./logs/obsidian_logs.json.pre_backfill ./logs/obsidian_logs.json
+
+# Clear volumes and restart (same as steps 4-6 above)
+docker compose down
+docker volume rm obsidian-grafana_loki_data obsidian-grafana_alloy_data
+docker compose up -d
+
+# Restore cron job
+crontab /tmp/cron_backup
+```
+
+### What the Backfill Script Does
+
+1. **Creates a backup**: `obsidian_logs.json` → `obsidian_logs.json.pre_backfill`
+2. **Processes rotated files**: Finds all `obsidian_logs.json.*` files (excluding `.pre_backfill`), sorts chronologically
+3. **Adds event_type**: First occurrence of each `file_path` = "created", subsequent = "modified"
+4. **Generates state file**: Creates `.known_files` for the parser to use going forward
+5. **Validates output**: Checks entry count and JSON validity before replacing the original
+
 ## File Structure
 
 ```
 obsidian-grafana/
 ├── parse_notes.py                      # Main Python parser script
+├── backfill_event_type.py              # One-time migration: adds event_type to existing logs
 ├── requirements.txt                    # Python dependencies (pyyaml, frontmatter, prometheus-client)
 ├── config.yaml                         # User configuration (git-ignored)
 ├── config.yaml.example                 # Configuration template
@@ -519,6 +586,8 @@ obsidian-grafana/
 ├── docker-compose.yml                  # Docker stack orchestration
 ├── Dockerfile                          # Dockerfile for metrics exporter service
 ├── README.md                           # Documentation (this file)
+├── test_event_type.py                  # Tests for event_type functionality
+├── test_vault_index.py                 # Tests for vault index export
 │
 ├── scripts/
 │   └── export-dashboards.sh           # Export Grafana dashboards to JSON files
@@ -544,7 +613,8 @@ obsidian-grafana/
 ├── logs/                               # Generated logs directory
 │   ├── obsidian_logs.json             # Structured log entries (appended)
 │   ├── obsidian_parser.log            # Parser execution logs
-│   └── .last_run                       # Last run timestamp for event-based logging
+│   ├── .last_run                       # Last run timestamp for event-based logging
+│   └── .known_files                    # Known file paths for event_type tracking
 │
 ├── loki-config.yaml                    # Loki storage and limits configuration
 └── prometheus.yml                      # Prometheus scrape configuration
