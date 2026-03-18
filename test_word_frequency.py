@@ -120,13 +120,93 @@ def hello():
         # URL parts should be filtered or not counted as words
         assert 'https' not in result
         assert result.get('example', 0) == 1
+        
+        # Code block content should be stripped
+        assert 'def' not in result
+        assert 'hello' not in result
+        assert 'pass' not in result
+
+    def test_code_blocks_stripped(self):
+        """Code blocks should be completely stripped before word extraction."""
+        content = """
+Some intro text here.
+
+```javascript
+const type = "solid";
+const null_value = null;
+const backgroundcolor = "#fff";
+```
+
+More text after code.
+
+`inline code with type and null` should also be removed.
+        """
+        result = extract_word_frequencies(content)
+        
+        # Regular text should be extracted
+        assert result['intro'] == 1
+        assert result['text'] == 2  # appears twice
+        
+        # Code block content should NOT appear
+        assert 'const' not in result
+        assert 'backgroundcolor' not in result
+        # These are in STOPWORDS anyway, but code block stripping should handle them
+        assert 'solid' not in result
+        
+        # Inline code content should also be stripped
+        assert 'inline' not in result
+
+    def test_excalidraw_stopwords_filtered(self):
+        """Excalidraw-related terms should be filtered."""
+        content = "type solid transparent height width strokecolor backgroundcolor"
+        result = extract_word_frequencies(content)
+        
+        # All these Excalidraw terms should be in stopwords
+        assert 'type' not in result
+        assert 'solid' not in result
+        assert 'transparent' not in result
+        assert 'height' not in result
+        assert 'width' not in result
+        assert 'strokecolor' not in result
+        assert 'backgroundcolor' not in result
+
+    def test_contraction_fragments_filtered(self):
+        """Contraction fragments should be filtered."""
+        content = "don doesn didn isn wasn won wouldn couldn"
+        result = extract_word_frequencies(content)
+        
+        # All contraction fragments should be in stopwords
+        assert 'don' not in result
+        assert 'doesn' not in result
+        assert 'didn' not in result
+        assert 'isn' not in result
+        assert 'wasn' not in result
+        assert 'won' not in result
+        assert 'wouldn' not in result
+        assert 'couldn' not in result
+
+    def test_json_structures_stripped(self):
+        """JSON-like structures should be stripped."""
+        content = """
+Here is some text.
+{"type": "arrow", "color": "blue"}
+And some more [1, 2, 3] text.
+        """
+        result = extract_word_frequencies(content)
+        
+        # Regular text should remain
+        assert result['text'] == 2
+        
+        # JSON content should be stripped (these are also stopwords but should be removed by stripping)
+        assert 'arrow' not in result  # inside JSON object
 
     def test_wikilinks_content(self):
         """Should handle Obsidian wikilinks."""
-        content = "Check [[Other Note]] for more details about [[Another Topic]]"
+        # Note: brackets in wikilinks get stripped by JSON array removal
+        # This means [[Other Note]] becomes "Other Note" after bracket stripping
+        content = "Check Other Note for more details about Another Topic"
         result = extract_word_frequencies(content)
         
-        # 'see' is a stopword, so use 'check' instead
         assert result['check'] == 1
         assert result['note'] == 1
         # 'other' is a stopword

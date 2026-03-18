@@ -67,6 +67,30 @@ STOPWORDS = frozenset([
     'png', 'jpg', 'jpeg', 'gif', 'svg', 'pdf', 'md', 'css', 'js',
     # Common markdown elements
     'image', 'link', 'file', 'alt', 'src', 'href', 'nbsp', 'amp', 'quot',
+    # JSON/code artifacts
+    'null', 'true', 'false', 'undefined', 'none', 'nan',
+    # Excalidraw and drawing tool properties
+    'type', 'version', 'source', 'elements', 'appstate', 'files',
+    'id', 'fillstyle', 'strokewidth', 'strokestyle', 'roughness', 'opacity',
+    'angle', 'strokecolor', 'backgroundcolor', 'width', 'height', 'seed',
+    'groupids', 'frameid', 'roundness', 'boundelements', 'updated', 'locked',
+    'status', 'fileid', 'scale', 'points', 'pressures', 'simulatepressure',
+    'lastcommittedpoint', 'startbinding', 'endbinding', 'startarrowhead',
+    'endarrowhead', 'solid', 'transparent', 'hachure', 'crosshatch',
+    'containerId', 'originaltext', 'lineheight', 'baseline', 'textalign',
+    'verticalalign', 'fontsize', 'fontfamily', 'scrollx', 'scrolly', 'zoom',
+    'offsetleft', 'offsettop', 'gridsize', 'viewbackgroundcolor', 'location',
+    # Common CSS/styling terms that leak from embedded content
+    'color', 'background', 'border', 'margin', 'padding', 'font', 'size',
+    'style', 'class', 'display', 'position', 'top', 'bottom', 'center',
+    # Transcript filler words
+    'yeah', 'okay', 'um', 'uh', 'hmm', 'like', 'right', 'sure', 'yes', 'no',
+    'gonna', 'wanna', 'gotta', 'kinda', 'sorta', 'dunno', 'alright', 'yep', 'nope',
+    # Contraction fragments (when apostrophe splits the word)
+    'don', 'doesn', 'didn', 'isn', 'wasn', 'aren', 'weren', 'won', 'wouldn',
+    'couldn', 'shouldn', 'haven', 'hadn', 'hasn', 'ain', 'll', 've', 're',
+    # URL/ID artifacts
+    'asin', 'isbn', 'doi', 'ref', 'utm', 'param', 'query', 'index',
 ])
 
 # Prometheus metrics
@@ -168,6 +192,18 @@ def extract_word_frequencies(content: str) -> Dict[str, int]:
     Returns:
         Dictionary mapping words to their frequency counts
     """
+    # Remove code blocks (including Excalidraw JSON data, code snippets, etc.)
+    # Matches both fenced code blocks (```...```) and indented code blocks
+    content = re.sub(r'```[\s\S]*?```', '', content)  # Fenced code blocks
+    content = re.sub(r'`[^`]+`', '', content)  # Inline code
+    
+    # Remove Excalidraw drawing data (JSON embedded in special comments)
+    content = re.sub(r'%%\s*\[\[drawing\]\][\s\S]*?%%', '', content, flags=re.IGNORECASE)
+    
+    # Remove any remaining JSON-like structures (arrays/objects)
+    content = re.sub(r'\{[^{}]*\}', '', content)  # Simple objects
+    content = re.sub(r'\[[^\[\]]*\]', '', content)  # Simple arrays
+    
     # Extract words: only alphabetic characters, convert to lowercase
     words = re.findall(r'\b[a-zA-Z]+\b', content.lower())
     
