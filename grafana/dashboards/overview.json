@@ -3,7 +3,9 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": "-- Grafana --",
+        "datasource": {
+          "uid": "-- Grafana --"
+        },
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
@@ -13,61 +15,29 @@
     ]
   },
   "editable": true,
-  "gnetId": null,
+  "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": null,
   "links": [],
   "panels": [
     {
-      "datasource": "Loki",
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
           "custom": {
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
-              "vis": false
+              "vis": false,
+              "viz": false
             },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
             }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "short"
+          }
         },
         "overrides": []
       },
@@ -79,26 +49,88 @@
       },
       "id": 1,
       "options": {
+        "calculate": false,
+        "calculation": {
+          "yBuckets": {
+            "mode": "count",
+            "value": "5"
+          }
+        },
+        "cellGap": 2,
+        "cellRadius": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "#9be9a8",
+          "min": 0,
+          "mode": "thresholds",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "Greens",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1E-9
+        },
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom"
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
         },
         "tooltip": {
-          "mode": "single"
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "decimals": 0,
+          "reverse": false,
+          "unit": "short"
         }
       },
+      "pluginVersion": "12.3.0",
       "targets": [
         {
-          "expr": "sum by (vault) (count_over_time({job=\"obsidian-parser\"}[1h]))",
+          "app": "grafana-assistant-app",
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "expr": "sum(count_over_time({job=\"obsidian-parser\", vault!=\"DownloadMyBrain\"}[1h]))",
+          "hide": true,
+          "instant": false,
+          "legendFormat": "",
+          "queryType": "range",
+          "range": true,
           "refId": "A"
+        },
+        {
+          "app": "grafana-assistant-app",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "downsampler": "sum",
+          "expression": "A",
+          "hide": false,
+          "refId": "B",
+          "type": "resample",
+          "upsampler": "fillna",
+          "window": "1d"
         }
       ],
       "title": "Notes Processed",
-      "type": "timeseries"
+      "type": "heatmap"
     },
     {
-      "datasource": "Prometheus",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -110,7 +142,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -130,6 +162,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -137,11 +170,17 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "8.0.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
           "expr": "obsidian_notes_count",
           "refId": "A"
         }
@@ -150,7 +189,10 @@
       "type": "stat"
     },
     {
-      "datasource": "Prometheus",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -162,7 +204,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -182,6 +224,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -189,11 +232,17 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "8.0.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
           "expr": "obsidian_words_total",
           "refId": "A"
         }
@@ -202,7 +251,10 @@
       "type": "stat"
     },
     {
-      "datasource": "Prometheus",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -214,7 +266,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -234,6 +286,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -241,11 +294,17 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "8.0.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
           "expr": "obsidian_tags_count",
           "refId": "A"
         }
@@ -254,7 +313,10 @@
       "type": "stat"
     },
     {
-      "datasource": "Loki",
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -266,7 +328,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -290,6 +352,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -297,12 +360,23 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "8.0.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
-          "expr": "sum(rate({job=\"obsidian-parser\"}[5m]))",
+          "app": "grafana-assistant-app",
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "expr": "sum(rate({job=\"obsidian-parser\"}[$__auto]))",
+          "hide": false,
+          "instant": false,
+          "queryType": "range",
+          "range": true,
           "refId": "A"
         }
       ],
@@ -310,261 +384,10 @@
       "type": "stat"
     },
     {
-      "datasource": "Prometheus",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "decimals": 2,
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 2
-              },
-              {
-                "color": "yellow",
-                "value": 5
-              },
-              {
-                "color": "orange",
-                "value": 10
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
       },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 0,
-        "y": 40
-      },
-      "id": 10,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "8.0.0",
-      "targets": [
-        {
-          "expr": "obsidian_wikilinks_total / obsidian_notes_count",
-          "refId": "A"
-        }
-      ],
-      "title": "Links per note",
-      "type": "stat"
-    },
-    {
-      "datasource": "Loki",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "vis": false
-            },
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 32
-      },
-      "id": 7,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (vault) (count_over_time({job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\" [5m]))",
-          "legendFormat": "{{vault}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Notes Updated Over Time",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Loki",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 10
-              },
-              {
-                "color": "yellow",
-                "value": 50
-              },
-              {
-                "color": "orange",
-                "value": 100
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 18,
-        "y": 24
-      },
-      "id": 8,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "8.0.0",
-      "targets": [
-        {
-          "expr": "{job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\"",
-          "legendFormat": "",
-          "maxLines": 1000,
-          "refId": "A"
-        }
-      ],
-      "title": "Notes Updated",
-      "transformations": [
-        {
-          "id": "extractFields",
-          "options": {
-            "format": "json",
-            "source": "Line"
-          }
-        },
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "note_name"
-              ]
-            }
-          }
-        },
-        {
-          "id": "groupBy",
-          "options": {
-            "fields": {
-              "note_name": {
-                "aggregations": [
-                  "count"
-                ],
-                "operation": "groupby"
-              }
-            }
-          }
-        },
-        {
-          "id": "reduce",
-          "options": {
-            "reducers": [
-              "count"
-            ]
-          }
-        }
-      ],
-      "type": "stat"
-    },
-    {
-      "datasource": "Loki",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -572,8 +395,13 @@
           },
           "custom": {
             "align": "auto",
-            "displayMode": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
             "filterable": false,
+            "footer": {
+              "reducers": []
+            },
             "inspect": false
           },
           "mappings": [],
@@ -582,7 +410,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           }
@@ -618,10 +446,11 @@
         "h": 8,
         "w": 18,
         "x": 0,
-        "y": 24
+        "y": 16
       },
       "id": 9,
       "options": {
+        "cellHeight": "sm",
         "showHeader": true,
         "sortBy": [
           {
@@ -630,12 +459,20 @@
           }
         ]
       },
-      "pluginVersion": "8.0.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
+          "app": "grafana-assistant-app",
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
           "expr": "{job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\"",
+          "hide": false,
+          "instant": false,
           "legendFormat": "",
-          "maxLines": 100,
+          "queryType": "range",
+          "range": true,
           "refId": "A"
         }
       ],
@@ -722,11 +559,312 @@
         }
       ],
       "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 10
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "orange",
+                "value": 100
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 16
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.0",
+      "targets": [
+        {
+          "app": "grafana-assistant-app",
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "expr": "{job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\"",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "",
+          "queryType": "range",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Notes Updated",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "format": "json",
+            "source": "Line"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "note_name"
+              ]
+            }
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "note_name": {
+                "aggregations": [
+                  "count"
+                ],
+                "operation": "groupby"
+              }
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ]
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.3.0",
+      "targets": [
+        {
+          "app": "grafana-assistant-app",
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "expr": "sum by (vault) (count_over_time({job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\" [$__auto]))",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "{{vault}}",
+          "queryType": "range",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Notes Updated Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 2
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "orange",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 32
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "expr": "obsidian_wikilinks_total / obsidian_notes_count",
+          "refId": "A"
+        }
+      ],
+      "title": "Links per note",
+      "type": "stat"
     }
   ],
+  "preload": false,
   "refresh": "5s",
-  "schemaVersion": 27,
-  "style": "dark",
+  "schemaVersion": 42,
   "tags": [
     "obsidian"
   ],

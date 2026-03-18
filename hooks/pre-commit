@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+EXPORT_SCRIPT="${REPO_DIR}/scripts/export-dashboards.sh"
+DASHBOARD_DIR="${REPO_DIR}/grafana/dashboards"
+
+if [ ! -x "$EXPORT_SCRIPT" ]; then
+  echo "pre-commit: export script not found or not executable at ${EXPORT_SCRIPT}" >&2
+  exit 0
+fi
+
+echo "pre-commit: exporting Grafana dashboards..."
+if "$EXPORT_SCRIPT"; then
+  changed=$(git diff --name-only -- "$DASHBOARD_DIR")
+  if [ -n "$changed" ]; then
+    echo "$changed" | while IFS= read -r file; do
+      git add "$file"
+      echo "  staged: $file"
+    done
+  fi
+else
+  echo "pre-commit: dashboard export failed (continuing with commit)" >&2
+fi

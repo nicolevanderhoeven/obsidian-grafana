@@ -275,7 +275,7 @@ To solve this, a pre-commit hook automatically exports the latest dashboard JSON
 Configure git to use the project's hooks directory:
 
 ```bash
-git config core.hooksPath .githooks
+git config core.hooksPath hooks
 ```
 
 This requires `jq` to be installed:
@@ -522,7 +522,7 @@ obsidian-grafana/
 │
 ├── scripts/
 │   └── export-dashboards.sh           # Export Grafana dashboards to JSON files
-├── .githooks/
+├── hooks/
 │   └── pre-commit                     # Auto-exports dashboards before commits
 │
 ├── alloy/
