@@ -20,24 +20,75 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
 import frontmatter
 from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+import re
+
+# Stopwords for word cloud filtering (common English words + markdown/URL artifacts)
+STOPWORDS = frozenset([
+    # Articles and determiners
+    'a', 'an', 'the', 'this', 'that', 'these', 'those', 'my', 'your', 'his', 'her',
+    'its', 'our', 'their', 'some', 'any', 'no', 'every', 'each', 'all', 'both',
+    'few', 'more', 'most', 'other', 'such', 'own',
+    # Pronouns
+    'i', 'me', 'we', 'us', 'you', 'he', 'him', 'she', 'it', 'they', 'them',
+    'what', 'which', 'who', 'whom', 'whose', 'myself', 'yourself', 'himself',
+    'herself', 'itself', 'ourselves', 'themselves',
+    # Prepositions
+    'in', 'on', 'at', 'by', 'for', 'with', 'about', 'against', 'between', 'into',
+    'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from', 'up',
+    'down', 'out', 'off', 'over', 'under', 'again', 'further', 'then', 'once',
+    'of', 'as', 'until', 'while', 'upon', 'across', 'along', 'around', 'behind',
+    'beside', 'beyond', 'near', 'toward', 'within', 'without',
+    # Conjunctions
+    'and', 'but', 'or', 'nor', 'so', 'yet', 'both', 'either', 'neither',
+    'not', 'only', 'than', 'when', 'where', 'why', 'how', 'because', 'although',
+    'though', 'if', 'unless', 'since', 'whether',
+    # Common verbs
+    'be', 'is', 'am', 'are', 'was', 'were', 'been', 'being',
+    'have', 'has', 'had', 'having', 'do', 'does', 'did', 'doing', 'done',
+    'will', 'would', 'shall', 'should', 'may', 'might', 'must', 'can', 'could',
+    'get', 'got', 'getting', 'make', 'made', 'making', 'go', 'goes', 'went', 'going', 'gone',
+    'see', 'saw', 'seen', 'know', 'knew', 'known', 'take', 'took', 'taken',
+    'come', 'came', 'coming', 'want', 'use', 'used', 'using', 'find', 'found',
+    'give', 'gave', 'given', 'tell', 'told', 'say', 'said', 'think', 'thought',
+    'let', 'put', 'keep', 'kept', 'set', 'seem', 'seemed', 'try', 'tried',
+    'leave', 'left', 'call', 'called', 'need', 'feel', 'felt', 'become', 'became',
+    # Adverbs and other common words
+    'here', 'there', 'now', 'just', 'also', 'very', 'too', 'well', 'back',
+    'even', 'still', 'already', 'always', 'never', 'ever', 'often', 'sometimes',
+    'usually', 'really', 'actually', 'probably', 'maybe', 'perhaps', 'quite',
+    'rather', 'almost', 'enough', 'much', 'many', 'little', 'less', 'least',
+    'first', 'last', 'next', 'new', 'old', 'good', 'bad', 'great', 'long',
+    'high', 'low', 'big', 'small', 'large', 'right', 'wrong', 'true', 'false',
+    'same', 'different', 'able', 'like', 'way', 'thing', 'things', 'something',
+    'anything', 'everything', 'nothing', 'someone', 'anyone', 'everyone',
+    'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+    # Markdown/URL artifacts
+    'http', 'https', 'www', 'com', 'org', 'net', 'io', 'html', 'htm', 'php',
+    'png', 'jpg', 'jpeg', 'gif', 'svg', 'pdf', 'md', 'css', 'js',
+    # Common markdown elements
+    'image', 'link', 'file', 'alt', 'src', 'href', 'nbsp', 'amp', 'quot',
+])
 
 # Prometheus metrics
-obsidian_note_total = Counter('obsidian_note_total', 'Total number of unique notes', ['vault', 'note_name'])
-obsidian_word_count_total = Counter('obsidian_word_count_total', 'Total word count across all notes', ['vault', 'note_name'])
-obsidian_tags_total = Counter('obsidian_tags_total', 'Total number of unique tags', ['vault', 'note_name'])
+obsidian_note_total = Counter('obsidian_note_total', 'Total number of unique notes', ['vault', 'note_name', 'file_path'])
+obsidian_word_count_total = Counter('obsidian_word_count_total', 'Total word count across all notes', ['vault', 'note_name', 'file_path'])
+obsidian_tags_total = Counter('obsidian_tags_total', 'Total number of unique tags', ['vault', 'note_name', 'file_path'])
 
 # Gauges for current state
 obsidian_notes_gauge = Gauge('obsidian_notes_count', 'Current number of unique notes', ['vault'])
 obsidian_words_gauge = Gauge('obsidian_words_total', 'Current total word count', ['vault'])
 obsidian_tags_gauge = Gauge('obsidian_tags_count', 'Current number of unique tags', ['vault'])
 obsidian_wikilinks_gauge = Gauge('obsidian_wikilinks_total', 'Current total number of wikilinks', ['vault'])
+obsidian_note_wikilinks = Gauge('obsidian_note_wikilinks', 'Number of wikilinks in each note', ['vault', 'note_name', 'file_path'])
+obsidian_word_frequency = Gauge('obsidian_word_frequency', 'Word frequency in vault (top 100 words)', ['vault', 'word'])
 
 # Global state for metrics
 metrics_data = {
     'unique_notes': set(),
     'unique_tags': set(),
     'total_words': 0,
-    'vault_counts': defaultdict(lambda: {'notes': set(), 'tags': set(), 'words': 0, 'wikilinks': 0})
+    'vault_counts': defaultdict(lambda: {'notes': set(), 'tags': set(), 'words': 0, 'wikilinks': 0}),
+    'word_frequencies': defaultdict(lambda: defaultdict(int))  # vault -> word -> count
 }
 
 
@@ -70,7 +121,7 @@ def start_metrics_server(port: int = 8080):
     return server
 
 
-def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str], wikilinks_count: int = 0):
+def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str], wikilinks_count: int = 0, file_path: str = ""):
     """Update Prometheus metrics with new note data."""
     global metrics_data
     
@@ -87,16 +138,17 @@ def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str],
         metrics_data['vault_counts'][vault]['tags'].add(tag)
     
     # Update counters
-    obsidian_note_total.labels(vault=vault, note_name=note_name).inc()
-    obsidian_word_count_total.labels(vault=vault, note_name=note_name).inc(word_count)
+    obsidian_note_total.labels(vault=vault, note_name=note_name, file_path=file_path).inc()
+    obsidian_word_count_total.labels(vault=vault, note_name=note_name, file_path=file_path).inc(word_count)
     for tag in tags:
-        obsidian_tags_total.labels(vault=vault, note_name=note_name).inc()
+        obsidian_tags_total.labels(vault=vault, note_name=note_name, file_path=file_path).inc()
     
     # Update gauges
     obsidian_notes_gauge.labels(vault=vault).set(len(metrics_data['vault_counts'][vault]['notes']))
     obsidian_words_gauge.labels(vault=vault).set(metrics_data['vault_counts'][vault]['words'])
     obsidian_tags_gauge.labels(vault=vault).set(len(metrics_data['vault_counts'][vault]['tags']))
     obsidian_wikilinks_gauge.labels(vault=vault).set(metrics_data['vault_counts'][vault]['wikilinks'])
+    obsidian_note_wikilinks.labels(vault=vault, note_name=note_name, file_path=file_path).set(wikilinks_count)
 
 
 def setup_logging(log_level: str = "INFO") -> None:
@@ -105,6 +157,54 @@ def setup_logging(log_level: str = "INFO") -> None:
         level=getattr(logging, log_level.upper()),
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
+
+
+def extract_word_frequencies(content: str) -> Dict[str, int]:
+    """Extract word frequencies from content, filtering stopwords.
+    
+    Args:
+        content: The text content to analyze (should exclude frontmatter)
+        
+    Returns:
+        Dictionary mapping words to their frequency counts
+    """
+    # Extract words: only alphabetic characters, convert to lowercase
+    words = re.findall(r'\b[a-zA-Z]+\b', content.lower())
+    
+    # Count frequencies, filtering stopwords and short words
+    word_counts: Dict[str, int] = defaultdict(int)
+    for word in words:
+        # Skip stopwords, single characters, and very short words
+        if word not in STOPWORDS and len(word) > 2:
+            word_counts[word] += 1
+    
+    return dict(word_counts)
+
+
+def update_word_frequency_metrics(vault: str, top_n: int = 100) -> None:
+    """Update Prometheus gauges with top N word frequencies for a vault.
+    
+    Args:
+        vault: The vault name
+        top_n: Number of top words to expose as metrics (default 100)
+    """
+    global metrics_data
+    
+    word_counts = metrics_data['word_frequencies'][vault]
+    if not word_counts:
+        return
+    
+    # Get top N words sorted by frequency
+    top_words = sorted(word_counts.items(), key=lambda x: x[1], reverse=True)[:top_n]
+    
+    # Clear existing metrics for this vault to avoid stale data
+    # Note: prometheus_client doesn't have a clean way to remove specific labels,
+    # so we set the values for top words and they'll replace previous values
+    
+    for word, count in top_words:
+        obsidian_word_frequency.labels(vault=vault, word=word).set(count)
+    
+    logging.info(f"Updated word frequency metrics: top {len(top_words)} words for vault '{vault}'")
 
 
 def extract_basic_stats(file_path: Path) -> Dict[str, Any]:
@@ -254,12 +354,17 @@ def create_loki_labels(note_name: str, vault_name: str, metadata: Dict[str, Any]
 
 def parse_obsidian_vault_metrics_only(vault_path: str, exclude_files: set = None) -> None:
     """Parse all markdown files in the Obsidian vault and update metrics only (no file output)."""
+    global metrics_data
+    
     vault_path = Path(vault_path)
     if not vault_path.exists():
         raise ValueError(f"Vault path does not exist: {vault_path}")
     
     exclude_files = exclude_files or set()
     vault_name = vault_path.name
+    
+    # Reset word frequencies for this vault (since we're recalculating)
+    metrics_data['word_frequencies'][vault_name] = defaultdict(int)
     
     # Find all markdown files
     md_files = list(vault_path.rglob("*.md"))
@@ -282,6 +387,18 @@ def parse_obsidian_vault_metrics_only(vault_path: str, exclude_files: set = None
             frontmatter_metadata = extract_frontmatter_metadata(file_path)
             timestamps = get_file_timestamps(file_path)
             
+            # Extract word frequencies from content (excluding frontmatter)
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    post = frontmatter.load(f)
+                content = post.content
+                word_freqs = extract_word_frequencies(content)
+                # Aggregate word frequencies for this vault
+                for word, count in word_freqs.items():
+                    metrics_data['word_frequencies'][vault_name][word] += count
+            except Exception as e:
+                logging.debug(f"Could not extract word frequencies from {file_path}: {e}")
+            
             # Combine all metadata (excluding internal timestamp field)
             all_metadata = {
                 **basic_stats,
@@ -303,13 +420,16 @@ def parse_obsidian_vault_metrics_only(vault_path: str, exclude_files: set = None
             if 'wikilinks' in all_metadata:
                 wikilinks_count = len([link.strip() for link in all_metadata['wikilinks'].split(',') if link.strip()])
             
-            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags, wikilinks_count)
+            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags, wikilinks_count, file_path=relative_path)
             
             logging.debug(f"Processed: {relative_path}")
             
         except Exception as e:
             logging.error(f"Error processing {file_path}: {e}")
             continue
+    
+    # Update word frequency Prometheus metrics
+    update_word_frequency_metrics(vault_name, top_n=100)
     
     logging.info(f"Processed {len(md_files)} files for metrics")
 
@@ -428,7 +548,7 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
             if 'wikilinks' in all_metadata:
                 wikilinks_count = len([link.strip() for link in all_metadata['wikilinks'].split(',') if link.strip()])
             
-            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags, wikilinks_count)
+            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags, wikilinks_count, file_path=relative_path)
             
             logging.debug(f"Processed: {relative_path}")
             

@@ -1,0 +1,178 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "# Word Cloud\n\nMost frequently used words across all notes in the vault (excluding common stopwords).",
+        "mode": "markdown"
+      },
+      "pluginVersion": "12.3.0",
+      "title": "",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 18,
+        "w": 24,
+        "x": 0,
+        "y": 2
+      },
+      "id": 2,
+      "options": {
+        "editor": {
+          "format": "auto",
+          "height": 600
+        },
+        "getOption": "// Transform Prometheus data to ECharts wordcloud format\nconst words = [];\n\n// Process data from Prometheus query\nif (data.series && data.series.length > 0) {\n  data.series.forEach(series => {\n    const wordLabel = series.fields.find(f => f.labels && f.labels.word);\n    const valueField = series.fields.find(f => f.name === 'Value' || f.type === 'number');\n    \n    if (wordLabel && valueField && valueField.values && valueField.values.length > 0) {\n      const word = wordLabel.labels.word;\n      const value = valueField.values[valueField.values.length - 1];\n      if (word && value > 0) {\n        words.push({ name: word, value: value });\n      }\n    }\n  });\n}\n\n// Sort by value and take top 100\nwords.sort((a, b) => b.value - a.value);\nconst topWords = words.slice(0, 100);\n\n// ECharts wordcloud configuration\nreturn {\n  tooltip: {\n    show: true,\n    formatter: function(params) {\n      return params.name + ': ' + params.value + ' occurrences';\n    }\n  },\n  series: [{\n    type: 'wordCloud',\n    shape: 'circle',\n    keepAspect: false,\n    left: 'center',\n    top: 'center',\n    width: '90%',\n    height: '90%',\n    right: null,\n    bottom: null,\n    sizeRange: [14, 80],\n    rotationRange: [-45, 45],\n    rotationStep: 15,\n    gridSize: 8,\n    drawOutOfBound: false,\n    shrinkToFit: true,\n    layoutAnimation: true,\n    textStyle: {\n      fontFamily: 'sans-serif',\n      fontWeight: 'bold',\n      color: function() {\n        // Random color from a pleasing palette\n        const colors = [\n          '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de',\n          '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#48b8d0'\n        ];\n        return colors[Math.floor(Math.random() * colors.length)];\n      }\n    },\n    emphasis: {\n      focus: 'self',\n      textStyle: {\n        textShadowBlur: 10,\n        textShadowColor: '#333'\n      }\n    },\n    data: topWords\n  }]\n};",
+        "renderer": "canvas",
+        "themeEditor": {
+          "config": "{}",
+          "name": "default"
+        }
+      },
+      "pluginVersion": "7.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "expr": "obsidian_word_frequency",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "{{word}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Word Cloud",
+      "type": "volkovlabs-echarts-panel"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 3,
+      "options": {
+        "displayMode": "gradient",
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.3.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "expr": "topk(25, obsidian_word_frequency)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "{{word}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Top 25 Words (Bar Chart)",
+      "type": "bargauge"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": [
+    "obsidian",
+    "wordcloud",
+    "analytics"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Word Cloud",
+  "uid": "obsidian-wordcloud",
+  "weekStart": ""
+}
