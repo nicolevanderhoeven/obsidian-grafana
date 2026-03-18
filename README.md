@@ -110,6 +110,7 @@ graph TB
 | Prometheus | Metrics storage and TSDB | 9090 | Prometheus |
 | Metrics Exporter | Prometheus metrics endpoint | 8080 | Python + prometheus_client |
 | Grafana | Visualization and dashboards | 3000 | Grafana 11.6 |
+| Grafana Assistant | AI assistant plugin (manually installed) | — | grafana-assistant-app v1.1.52 |
 
 **Key Features:**
 - 🔄 **Event-Based Logging**: Only modified notes are logged, reducing storage by 90%+
@@ -177,6 +178,18 @@ grafana_password: "your_grafana_password_here"  # Replace with your actual Grafa
 
 **Important**: The `config.yaml` file contains sensitive information (like your Grafana password) and is excluded from version control. Always use the `config.yaml.example` file as a template.
 
+Also create a `.env` file for Docker Compose (so `docker compose` commands work without needing `setup.sh`):
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and set your vault path:
+
+```bash
+VAULT_PATH="/path/to/your/obsidian/vault"
+```
+
 ### 2. Install Python Dependencies
 
 ```bash
@@ -205,6 +218,28 @@ Services available at:
 - **Metrics Exporter** at http://localhost:8080
 
 The parser will run every 5 minutes automatically.
+
+### Grafana Assistant Plugin
+
+The [Grafana Assistant](https://grafana.com/grafana/plugins/grafana-assistant-app/) plugin is installed manually into the Grafana Docker volume. Plugin ZIPs are stored locally in `grafana/plugins/` (gitignored).
+
+To install or update the plugin:
+
+```bash
+# Remove the old version from the Docker volume
+docker run --rm -v obsidian-grafana_grafana_data:/data alpine rm -rf /data/plugins/grafana-assistant-app
+
+# Install the new version from a ZIP
+docker run --rm \
+  -v obsidian-grafana_grafana_data:/data \
+  -v ./grafana/plugins/YOUR_PLUGIN.zip:/tmp/plugin.zip \
+  alpine sh -c "apk add --no-cache unzip && unzip /tmp/plugin.zip -d /data/plugins/"
+
+# Restart Grafana to load the new plugin
+docker restart obsidian-grafana
+```
+
+**Current version:** grafana-assistant-app v1.1.52
 
 ### 4. Test the System
 

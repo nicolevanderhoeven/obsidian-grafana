@@ -21,5 +21,9 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Configuration files with sensitive data
+# Grafana plugins (installed manually via ZIP)
+grafana/plugins/
+
+# Environment and configuration files with sensitive data
+.env
 config.yaml
