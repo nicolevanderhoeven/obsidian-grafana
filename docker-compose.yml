@@ -69,7 +69,7 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_AUTH_MANAGED_SERVICE_ACCOUNTS_ENABLED=true
       - GF_FEATURE_TOGGLES_ENABLE=externalServiceAccounts
-      - GF_INSTALL_PLUGINS=marcusolsson-calendar-panel
+      - GF_INSTALL_PLUGINS=marcusolsson-calendar-panel,volkovlabs-echarts-panel
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/dashboards:/var/lib/grafana/dashboards
