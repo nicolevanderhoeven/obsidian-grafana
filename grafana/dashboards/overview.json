@@ -436,7 +436,10 @@
       "id": 7,
       "options": {
         "legend": {
-          "calcs": ["lastNotNull", "max"],
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -447,8 +450,8 @@
       "targets": [
         {
           "expr": "sum by (vault) (count_over_time({job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\" [5m]))",
-          "refId": "A",
-          "legendFormat": "{{vault}}"
+          "legendFormat": "{{vault}}",
+          "refId": "A"
         }
       ],
       "title": "Notes Updated Over Time",
@@ -512,26 +515,27 @@
       "targets": [
         {
           "expr": "{job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\"",
-          "refId": "A",
           "legendFormat": "",
-          "maxLines": 1000
+          "maxLines": 1000,
+          "refId": "A"
         }
       ],
       "title": "Notes Updated",
-      "type": "stat",
       "transformations": [
         {
           "id": "extractFields",
           "options": {
-            "source": "Line",
-            "format": "json"
+            "format": "json",
+            "source": "Line"
           }
         },
         {
           "id": "filterFieldsByName",
           "options": {
             "include": {
-              "names": ["note_name"]
+              "names": [
+                "note_name"
+              ]
             }
           }
         },
@@ -556,7 +560,8 @@
             ]
           }
         }
-      ]
+      ],
+      "type": "stat"
     },
     {
       "datasource": "Loki",
@@ -629,9 +634,9 @@
       "targets": [
         {
           "expr": "{job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\"",
-          "refId": "A",
           "legendFormat": "",
-          "maxLines": 100
+          "maxLines": 100,
+          "refId": "A"
         }
       ],
       "title": "Recently Updated Notes",
@@ -639,15 +644,18 @@
         {
           "id": "extractFields",
           "options": {
-            "source": "Line",
-            "format": "json"
+            "format": "json",
+            "source": "Line"
           }
         },
         {
           "id": "filterFieldsByName",
           "options": {
             "include": {
-              "names": ["note_name", "modified_at"]
+              "names": [
+                "note_name",
+                "modified_at"
+              ]
             }
           }
         },
@@ -666,17 +674,17 @@
           "id": "groupBy",
           "options": {
             "fields": {
-              "note_name": {
-                "aggregations": [
-                  "lastNotNull"
-                ],
-                "operation": "groupby"
-              },
               "modified_at": {
                 "aggregations": [
                   "max"
                 ],
                 "operation": "aggregate"
+              },
+              "note_name": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "groupby"
               }
             }
           }
@@ -686,8 +694,8 @@
           "options": {
             "sort": [
               {
-                "field": "modified_at (max)",
-                "desc": true
+                "desc": true,
+                "field": "modified_at (max)"
               }
             ]
           }
@@ -697,12 +705,12 @@
           "options": {
             "excludeByName": {},
             "indexByName": {
-              "note_name (lastNotNull)": 0,
-              "modified_at (max)": 1
+              "modified_at (max)": 1,
+              "note_name (lastNotNull)": 0
             },
             "renameByName": {
-              "note_name (lastNotNull)": "Filename",
-              "modified_at (max)": "Time Modified"
+              "modified_at (max)": "Time Modified",
+              "note_name (lastNotNull)": "Filename"
             }
           }
         },
@@ -732,6 +740,5 @@
   "timepicker": {},
   "timezone": "",
   "title": "Obsidian Overview",
-  "uid": "obsidian-overview",
-  "version": 1
+  "uid": "obsidian-overview"
 }

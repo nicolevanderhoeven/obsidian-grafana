@@ -91,8 +91,8 @@
       "targets": [
         {
           "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap word_count [5m]))",
-          "refId": "A",
-          "legendFormat": "{{note_name}}"
+          "legendFormat": "{{note_name}}",
+          "refId": "A"
         }
       ],
       "title": "Word Count Over Time by Note",
@@ -171,8 +171,8 @@
       "targets": [
         {
           "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap line_count [5m]))",
-          "refId": "A",
-          "legendFormat": "{{note_name}}"
+          "legendFormat": "{{note_name}}",
+          "refId": "A"
         }
       ],
       "title": "Line Count Over Time by Note",
@@ -251,8 +251,8 @@
       "targets": [
         {
           "expr": "sum by (note_name) (avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap file_size [5m]))",
-          "refId": "A",
-          "legendFormat": "{{note_name}}"
+          "legendFormat": "{{note_name}}",
+          "refId": "A"
         }
       ],
       "title": "File Size Over Time by Note",
@@ -331,8 +331,8 @@
       "targets": [
         {
           "expr": "sum(avg_over_time({job=\"obsidian-parser\"} | json | __error__=\"\" | unwrap word_count [5m]))",
-          "refId": "A",
-          "legendFormat": "Total Words"
+          "legendFormat": "Total Words",
+          "refId": "A"
         }
       ],
       "title": "Total Word Count Over Time",
@@ -383,6 +383,5 @@
   "timepicker": {},
   "timezone": "",
   "title": "Obsidian Time Series",
-  "uid": "obsidian-timeseries",
-  "version": 1
+  "uid": "obsidian-timeseries"
 }

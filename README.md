@@ -264,6 +264,51 @@ Open Grafana at http://localhost:3000 and explore the pre-configured dashboards:
 - **Note Relationships**: Wikilinks and backlink analysis
 - **Frontmatter Types**: Distribution and usage patterns of different frontmatter types
 
+## Saving Dashboard Changes
+
+Dashboards are provisioned from JSON files in `grafana/dashboards/`. If you edit a dashboard in the Grafana UI, those changes are saved only to Grafana's internal database — **not** back to the JSON files. This means UI changes won't be included when you `git push`.
+
+To solve this, a pre-commit hook automatically exports the latest dashboard JSON from Grafana before each commit.
+
+### Setup (one-time)
+
+Configure git to use the project's hooks directory:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This requires `jq` to be installed:
+
+```bash
+brew install jq        # macOS
+sudo apt install jq    # Debian/Ubuntu
+```
+
+### How it works
+
+1. You edit dashboards in the Grafana UI as normal
+2. When you `git commit`, the pre-commit hook checks if Grafana is running
+3. If running, it exports all dashboards via the API and overwrites the JSON files in `grafana/dashboards/`
+4. Any changes are automatically staged into the commit
+5. If Grafana isn't running, the hook silently skips (so commits still work offline)
+
+### Manual export
+
+You can also export dashboards manually at any time:
+
+```bash
+./scripts/export-dashboards.sh
+```
+
+The script accepts environment variables for non-default setups:
+
+| Variable | Default | Description |
+|---|---|---|
+| `GRAFANA_URL` | `http://localhost:3000` | Grafana base URL |
+| `GRAFANA_USER` | `admin` | API username |
+| `GRAFANA_PASSWORD` | `admin` | API password (falls back to `GF_SECURITY_ADMIN_PASSWORD`) |
+
 ## Manual Usage
 
 ### Run Parser Manually
@@ -466,6 +511,11 @@ obsidian-grafana/
 ├── docker-compose.yml                  # Docker stack orchestration
 ├── Dockerfile                          # Dockerfile for metrics exporter service
 ├── README.md                           # Documentation (this file)
+│
+├── scripts/
+│   └── export-dashboards.sh           # Export Grafana dashboards to JSON files
+├── .githooks/
+│   └── pre-commit                     # Auto-exports dashboards before commits
 │
 ├── alloy/
 │   └── config.alloy                    # Alloy log collection configuration
