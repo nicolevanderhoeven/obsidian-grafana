@@ -203,12 +203,13 @@ def create_loki_labels(note_name: str, vault_name: str, metadata: Dict[str, Any]
     return labels
 
 
-def parse_obsidian_vault_metrics_only(vault_path: str) -> None:
+def parse_obsidian_vault_metrics_only(vault_path: str, exclude_files: set = None) -> None:
     """Parse all markdown files in the Obsidian vault and update metrics only (no file output)."""
     vault_path = Path(vault_path)
     if not vault_path.exists():
         raise ValueError(f"Vault path does not exist: {vault_path}")
     
+    exclude_files = exclude_files or set()
     vault_name = vault_path.name
     
     # Find all markdown files
@@ -222,6 +223,9 @@ def parse_obsidian_vault_metrics_only(vault_path: str) -> None:
                 continue
             
             note_name = file_path.stem
+            if note_name in exclude_files:
+                logging.debug(f"Skipping excluded file: {file_path.name}")
+                continue
             relative_path = str(file_path.relative_to(vault_path))
             
             # Extract all metadata
@@ -261,7 +265,7 @@ def parse_obsidian_vault_metrics_only(vault_path: str) -> None:
     logging.info(f"Processed {len(md_files)} files for metrics")
 
 
-def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
+def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set = None) -> None:
     """Parse all markdown files in the Obsidian vault and output to JSON.
     
     Uses event-based logging: only logs notes that were modified since the last run.
@@ -270,6 +274,7 @@ def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
     if not vault_path.exists():
         raise ValueError(f"Vault path does not exist: {vault_path}")
     
+    exclude_files = exclude_files or set()
     vault_name = vault_path.name
     entries = []
     
@@ -298,6 +303,10 @@ def parse_obsidian_vault(vault_path: str, output_file: str) -> None:
                 continue
             
             note_name = file_path.stem
+            if note_name in exclude_files:
+                logging.debug(f"Skipping excluded file: {file_path.name}")
+                continue
+            
             relative_path = str(file_path.relative_to(vault_path))
             
             # Extract all metadata
@@ -420,6 +429,7 @@ def main():
     log_level = args.log_level or config.get('log_level', 'INFO')
     metrics_port = args.metrics_port or config.get('metrics_port', 8080)
     start_metrics_server_flag = args.start_metrics_server or config.get('start_metrics_server', False)
+    exclude_files = set(config.get('exclude_files', []))
     
     if not vault_path:
         raise ValueError("Vault path must be specified in config file or --vault-path argument")
@@ -434,7 +444,7 @@ def main():
     try:
         if start_metrics_server_flag:
             # In metrics-only mode, don't write to file, just parse for metrics
-            parse_obsidian_vault_metrics_only(vault_path)
+            parse_obsidian_vault_metrics_only(vault_path, exclude_files)
             logging.info("Metrics parsing completed successfully")
             logging.info("Metrics server is running. Press Ctrl+C to stop.")
             try:
@@ -443,7 +453,7 @@ def main():
             except KeyboardInterrupt:
                 logging.info("Shutting down...")
         else:
-            parse_obsidian_vault(vault_path, output_file)
+            parse_obsidian_vault(vault_path, output_file, exclude_files)
             logging.info("Parsing completed successfully")
     except Exception as e:
         logging.error(f"Parsing failed: {e}")

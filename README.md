@@ -366,7 +366,13 @@ log_level: "INFO"                   # DEBUG, INFO, WARNING, ERROR
 metrics_port: 8080                  # Prometheus metrics endpoint port
 start_metrics_server: false         # Enable/disable metrics server
 grafana_password: "admin"           # Grafana admin password
+
+# Files to exclude from parsing (matched against note filename without extension)
+exclude_files:
+  - "Changelog"
 ```
+
+The `exclude_files` list skips notes by filename (without `.md` extension). Use this for extremely large notes that exceed Loki's `max_line_size` or that don't need monitoring.
 
 ### Alloy Configuration
 
@@ -377,10 +383,11 @@ Alloy serves as the log collector and forwarder:
 - `obsidian_parser.log`: Parser execution logs (for debugging)
 
 **Processing Pipeline:**
-1. Reads log files via `loki.source.file`
+1. Reads log files via `loki.source.file` (positions persisted in `alloy_data` volume)
 2. Parses JSON and extracts labels via `loki.process`
-3. Converts frontmatter fields to Loki labels (vault, job, tags, frontmatter_*)
-4. Forwards to Loki with proper timestamps via `loki.write`
+3. Parses the entry timestamp using RFC3339Nano format (preserves original event time)
+4. Converts frontmatter fields to Loki labels (vault, job, tags, frontmatter_*)
+5. Forwards to Loki via `loki.write`
 
 **Label Extraction:**
 - `vault`: Vault name (from vault path)
@@ -469,8 +476,9 @@ docker-compose up -d --build
 
 - Visit http://localhost:12345 for Alloy UI and status
 - Check that `./logs/obsidian_logs.json` is being created and populated
-- Verify Loki connectivity in Alloy logs: `docker-compose logs alloy`
+- Verify Loki connectivity in Alloy logs: `docker compose logs alloy`
 - Ensure log files are mounted correctly in the container
+- Alloy stores file read positions in the `alloy_data` Docker volume — if this is lost, Alloy re-reads files from the beginning, which may cause duplicate entries in Loki
 
 ### Loki Issues
 
@@ -547,6 +555,11 @@ obsidian-grafana/
 - `logs/obsidian_parser.log`: Parser execution logs (from cron)
 - `logs/.last_run`: Timestamp of last successful parser run
 
+**Docker Volumes:**
+- `loki_data`: Loki log storage and indexes
+- `grafana_data`: Grafana dashboards, preferences, and plugins
+- `alloy_data`: Alloy's file read positions (tracks ingestion progress)
+
 ## Production Considerations
 
 This setup is optimized for personal use and local development. For production or multi-user deployments, consider:
@@ -567,9 +580,37 @@ This setup is optimized for personal use and local development. For production o
 - **Label Cardinality**: Monitor Loki label cardinality; reduce frontmatter labels if needed
 
 ### Data Persistence
-- Docker volumes (`loki_data`, `grafana_data`) persist data across container restarts
+- Three Docker volumes persist data across container restarts:
+  - `loki_data`: All log data stored in Loki
+  - `grafana_data`: Dashboards, preferences, and plugin data
+  - `alloy_data`: Alloy's file read positions (tracks where it left off in log files)
 - Back up these volumes regularly: `docker run --rm -v loki_data:/data -v $(pwd):/backup ubuntu tar czf /backup/loki_data_backup.tar.gz -C /data .`
 - Consider external storage (NFS, S3) for long-term archival
+- **Do not use `docker compose down -v`** unless you intend to reset everything — the `-v` flag deletes all volumes, including Alloy's positions and Loki's stored data
+
+### Downtime & Data Gaps
+
+The cron-based parser runs on the host and continues writing to `obsidian_logs.json` even when Docker is down. When Alloy restarts, it resumes from its saved position in the file and sends any missed entries to Loki.
+
+**Requirements for seamless recovery:**
+- The `alloy_data` volume must survive the restart (avoid `docker compose down -v`)
+- Entries must not be older than `reject_old_samples_max_age` (currently 744h / 31 days) in `loki-config.yaml`
+
+**If Docker is down for longer than 31 days**, Loki will reject the oldest entries. To recover:
+
+1. Stop Loki and Alloy: `docker compose stop loki alloy`
+2. Remove their containers and volumes: `docker compose rm -f loki alloy && docker volume rm obsidian-grafana_loki_data obsidian-grafana_alloy_data`
+3. Temporarily increase `reject_old_samples_max_age` and add `max_chunk_age` in `loki-config.yaml`:
+   ```yaml
+   ingester:
+     max_chunk_age: 87600h
+     chunk_idle_period: 87600h
+   limits_config:
+     reject_old_samples_max_age: 87600h
+   ```
+4. Start fresh: `docker compose up -d loki && sleep 5 && docker compose up -d alloy`
+5. Wait for Alloy to finish re-ingesting (check `docker compose logs alloy` for errors)
+6. Revert `loki-config.yaml` to normal values and restart Loki: `docker compose restart loki`
 
 ### Monitoring & Reliability
 - Add health checks to `docker-compose.yml` for all services

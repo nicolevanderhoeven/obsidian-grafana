@@ -8,5 +8,9 @@ metrics_port: 8080
 start_metrics_server: false  # Set to true to enable metrics collection
 grafana_password: "your_grafana_password_here"  # Replace with your actual Grafana password
 
+# Files to exclude from parsing (matched against note filename without extension)
+exclude_files:
+  - "Changelog"
+
 # Vault index for OpenClaw integration (keep outside the vault to avoid Obsidian indexing it)
 index_output_path: "/path/to/openclaw-index"

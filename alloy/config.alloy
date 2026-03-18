@@ -38,7 +38,7 @@ loki.process "obsidian_logs" {
   // Set the timestamp from the JSON (only if JSON parsing succeeded)
   stage.timestamp {
     source = "timestamp"
-    format = "2006-01-02T15:04:05.999999"
+    format = "RFC3339Nano"
     action_on_failure = "skip"
   }
 

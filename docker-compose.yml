@@ -21,7 +21,8 @@ services:
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - ./logs:/logs:ro  # Read access to the logs directory
-    command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345
+      - alloy_data:/var/lib/alloy/data
+    command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data
     depends_on:
       - loki
     networks:
@@ -67,6 +68,7 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_AUTH_MANAGED_SERVICE_ACCOUNTS_ENABLED=true
       - GF_FEATURE_TOGGLES_ENABLE=externalServiceAccounts
+      - GF_INSTALL_PLUGINS=marcusolsson-calendar-panel
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/dashboards:/var/lib/grafana/dashboards
@@ -80,6 +82,7 @@ services:
 volumes:
   loki_data:
   grafana_data:
+  alloy_data:
 
 networks:
   obsidian-monitoring:
