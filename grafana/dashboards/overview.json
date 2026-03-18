@@ -1153,7 +1153,7 @@
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
       },
-      "description": "How many notes fall into each backlink-count bucket",
+      "description": "How many notes fall into each outgoing-link-count bucket",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1217,9 +1217,9 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "obsidian_notes_count - count(obsidian_note_total >= 1)",
+          "expr": "count(obsidian_note_wikilinks == 0)",
           "instant": true,
-          "legendFormat": "0 (orphan)",
+          "legendFormat": "0 (no links)",
           "queryType": "instant",
           "range": false,
           "refId": "A"
@@ -1230,7 +1230,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "count(obsidian_note_total == 1)",
+          "expr": "count(obsidian_note_wikilinks == 1)",
           "instant": true,
           "legendFormat": "1",
           "queryType": "instant",
@@ -1243,7 +1243,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "count(obsidian_note_total == 2)",
+          "expr": "count(obsidian_note_wikilinks == 2)",
           "instant": true,
           "legendFormat": "2",
           "queryType": "instant",
@@ -1256,7 +1256,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "count(obsidian_note_total >= 3 and obsidian_note_total <= 5)",
+          "expr": "count(obsidian_note_wikilinks >= 3 and obsidian_note_wikilinks <= 5)",
           "instant": true,
           "legendFormat": "3–5",
           "queryType": "instant",
@@ -1269,7 +1269,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "count(obsidian_note_total >= 6 and obsidian_note_total <= 10)",
+          "expr": "count(obsidian_note_wikilinks >= 6 and obsidian_note_wikilinks <= 10)",
           "instant": true,
           "legendFormat": "6–10",
           "queryType": "instant",
@@ -1282,7 +1282,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "count(obsidian_note_total > 10)",
+          "expr": "count(obsidian_note_wikilinks > 10)",
           "instant": true,
           "legendFormat": "11+",
           "queryType": "instant",
@@ -1290,7 +1290,7 @@
           "refId": "F"
         }
       ],
-      "title": "Backlinks per Note — Distribution",
+      "title": "Links per Note - Distribution",
       "type": "bargauge"
     },
     {
@@ -1518,8 +1518,8 @@
         ]
       },
       "gridPos": {
-        "h": 8,
-        "w": 18,
+        "h": 10,
+        "w": 11,
         "x": 0,
         "y": 54
       },
@@ -1635,26 +1635,6 @@
       "type": "table"
     },
     {
-      "gridPos": {
-        "h": 2,
-        "w": 24,
-        "x": 0,
-        "y": 62
-      },
-      "id": 22,
-      "options": {
-        "code": {
-          "language": "plaintext",
-          "showLineNumbers": false,
-          "showMiniMap": false
-        },
-        "content": "# Top Words",
-        "mode": "markdown"
-      },
-      "pluginVersion": "12.4.1",
-      "type": "text"
-    },
-    {
       "datasource": {
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
@@ -1670,7 +1650,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -1679,14 +1659,20 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 14,
-        "w": 24,
-        "x": 0,
-        "y": 64
+        "h": 10,
+        "w": 13,
+        "x": 11,
+        "y": 54
       },
       "id": 23,
       "options": {
         "displayMode": "gradient",
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
         "maxVizHeight": 300,
         "minVizHeight": 16,
         "minVizWidth": 8,
