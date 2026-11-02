@@ -402,6 +402,8 @@ log_level: "INFO"                   # DEBUG, INFO, WARNING, ERROR
 metrics_port: 8080                  # Prometheus metrics endpoint port
 metrics_refresh_interval: 300       # Seconds between vault re-scans in the metrics exporter
 start_metrics_server: false         # Enable/disable metrics server
+top_linked_notes: 50                # Most-linked notes exposed as a metric (0 disables)
+max_folders: 50                     # Top-level folders exposed individually; the rest become "(other)"
 grafana_password: "choose-one"      # Grafana admin password (required, no default)
 index_output_path: "/path/to/index" # Where export_vault_index.py writes (OpenClaw integration)
 
