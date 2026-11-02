@@ -5,8 +5,11 @@
 //   * logs:    /logs/obsidian_logs.json (job=obsidian-parser) only. The parser's own
 //              log (obsidian_parser.log, job=obsidian-cron) is deliberately NOT read here
 //              and stays local, because it can contain absolute vault file paths.
-//   * metrics: the exporter's /metrics (incl. obsidian_word_frequency), scraped here and
-//              remote-written to Grafana Cloud Metrics.
+//   * metrics: the exporter's /metrics, scraped here, filtered through the allowlist below
+//              and remote-written to Grafana Cloud Metrics. The exporter only exposes
+//              low-series metrics (vault totals, per-folder totals, note length / link
+//              histograms, top-N most-linked notes, top-100 words); the allowlist is a safety
+//              net so that a per-note series can never reach Cloud (billable per active series).
 // Credentials come from environment variables (see .env.example); nothing is stored here.
 
 local.file_match "obsidian_events" {
@@ -76,7 +79,27 @@ prometheus.scrape "obsidian_metrics" {
   targets         = [{"__address__" = "metrics-exporter:8080"}]
   job_name        = "obsidian-metrics"
   scrape_interval = "30s"
-  forward_to      = [prometheus.remote_write.cloud.receiver]
+  forward_to      = [prometheus.relabel.allowlist.receiver]
+}
+
+// Keep only these metric names (the regex is anchored, so e.g. obsidian_note_total and
+// *_created series do not match). `up` is kept so Cloud shows whether the exporter is reachable.
+// If you add a metric to the exporter and want it in Cloud, add it here.
+prometheus.relabel "allowlist" {
+  forward_to = [prometheus.remote_write.cloud.receiver]
+
+  rule {
+    source_labels = ["__name__"]
+    regex         = "up|obsidian_notes_count|obsidian_words_total|obsidian_tags_count|obsidian_wikilinks_total|obsidian_word_frequency|obsidian_folder_(notes|words|wikilinks|tags)|obsidian_note_(length_words|outlinks)_(bucket|sum|count)|obsidian_top_linked_note_backlinks"
+    action        = "keep"
+  }
+
+  // Second guard: never forward a series labelled with a note path, whatever its name.
+  rule {
+    source_labels = ["file_path"]
+    regex         = ".+"
+    action        = "drop"
+  }
 }
 
 prometheus.remote_write "cloud" {

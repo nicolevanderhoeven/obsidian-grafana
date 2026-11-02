@@ -1,6 +1,7 @@
+import pytest
 """Tests for word frequency extraction in obsidian_grafana/parse_notes.py"""
 
-from obsidian_grafana.parse_notes import extract_word_frequencies, STOPWORDS, update_metrics, obsidian_note_total, obsidian_note_wikilinks
+from obsidian_grafana.parse_notes import extract_word_frequencies, STOPWORDS, update_metrics, obsidian_notes_gauge, obsidian_wikilinks_gauge, reset_metrics
 
 
 class TestExtractWordFrequencies:
@@ -326,80 +327,21 @@ class TestStopwordsCompleteness:
 
 
 class TestUpdateMetrics:
-    """Tests for update_metrics function with file_path label."""
+    """update_metrics maintains vault totals only (no per-note series)."""
 
-    def test_update_metrics_with_file_path(self):
-        """Should update metrics including file_path label."""
-        update_metrics(
-            note_name="test-note",
-            vault="test-vault",
-            word_count=100,
-            tags=["tag1", "tag2"],
-            wikilinks_count=5,
-            file_path="folder/subfolder/test-note.md"
-        )
-        
-        # Verify the metric was created with the file_path label
-        labels = {"vault": "test-vault", "note_name": "test-note", "file_path": "folder/subfolder/test-note.md"}
-        metric_value = obsidian_note_total.labels(**labels)._value.get()
-        assert metric_value >= 1
+    def setup_method(self):
+        reset_metrics()
 
-    def test_update_metrics_without_file_path(self):
-        """Should work with empty file_path (backwards compatibility)."""
-        update_metrics(
-            note_name="root-note",
-            vault="test-vault",
-            word_count=50,
-            tags=[],
-            wikilinks_count=0,
-            file_path=""
-        )
-        
-        labels = {"vault": "test-vault", "note_name": "root-note", "file_path": ""}
-        metric_value = obsidian_note_total.labels(**labels)._value.get()
-        assert metric_value >= 1
+    def teardown_method(self):
+        reset_metrics()
 
-    def test_update_metrics_file_path_with_special_chars(self):
-        """Should handle file paths with spaces and special characters."""
-        update_metrics(
-            note_name="my note",
-            vault="test-vault",
-            word_count=25,
-            tags=["test"],
-            wikilinks_count=1,
-            file_path="My Folder/Sub Folder/my note.md"
-        )
-        
-        labels = {"vault": "test-vault", "note_name": "my note", "file_path": "My Folder/Sub Folder/my note.md"}
-        metric_value = obsidian_note_total.labels(**labels)._value.get()
-        assert metric_value >= 1
+    def test_totals_accumulate(self):
+        update_metrics("a", "v", 100, ["t1", "t2"], 5)
+        update_metrics("my note", "v", 25, ["t1"], 1)
+        assert obsidian_notes_gauge.labels(vault="v")._value.get() == 2
+        assert obsidian_wikilinks_gauge.labels(vault="v")._value.get() == 6
 
-    def test_update_metrics_wikilinks_per_note(self):
-        """Should track wikilinks count per note."""
-        update_metrics(
-            note_name="linked-note",
-            vault="test-vault",
-            word_count=100,
-            tags=[],
-            wikilinks_count=15,
-            file_path="folder/linked-note.md"
-        )
-        
-        labels = {"vault": "test-vault", "note_name": "linked-note", "file_path": "folder/linked-note.md"}
-        metric_value = obsidian_note_wikilinks.labels(**labels)._value.get()
-        assert metric_value == 15
-
-    def test_update_metrics_wikilinks_zero(self):
-        """Should handle notes with zero wikilinks."""
-        update_metrics(
-            note_name="no-links",
-            vault="test-vault",
-            word_count=50,
-            tags=[],
-            wikilinks_count=0,
-            file_path="no-links.md"
-        )
-        
-        labels = {"vault": "test-vault", "note_name": "no-links", "file_path": "no-links.md"}
-        metric_value = obsidian_note_wikilinks.labels(**labels)._value.get()
-        assert metric_value == 0
+    def test_no_per_note_label_signature(self):
+        # file_path was removed together with the per-note families
+        with pytest.raises(TypeError):
+            update_metrics("a", "v", 1, [], 0, file_path="a.md")

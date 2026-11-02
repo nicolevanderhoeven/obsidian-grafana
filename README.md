@@ -138,8 +138,12 @@ All published ports are bound to `127.0.0.1` (this machine only). All image and 
   - Total note count per vault
   - Total word count across all notes
   - Unique tag count
-  - Total wikilink count (and wikilinks per note)
+  - Total wikilink count
+  - Per top-level folder: notes, words, wikilinks, unique tags (`obsidian_folder_*`)
+  - Histograms of note length in words and of outgoing links per note
+  - The top 50 most-linked notes by backlinks (`obsidian_top_linked_note_backlinks`)
   - Top 100 word frequencies (powers the Word Cloud dashboard)
+  - No per-note series: per-note facts (word count, links, tags, frontmatter) come from the Loki note events
 - **Automatic Log Rotation**: Rotates logs when they exceed 50MB to manage disk space
 - **Scheduled Parsing**: Automated cron job runs every 5 minutes to capture changes
 
@@ -319,6 +323,20 @@ Command-line options override `config.yaml`, which overrides the built-in defaul
 
 Visit http://localhost:12345 to see Alloy's status and configuration.
 
+## Breaking change: per-note metrics removed
+
+The exporter no longer emits `obsidian_note_total`, `obsidian_word_count_total`, `obsidian_tags_total` and `obsidian_note_wikilinks` (labelled `note_name` and `file_path`, about 6 series per note). They are not behind a flag, so the local stack and Grafana Cloud see the same low-series metrics. Anything you queried from them has a replacement:
+
+| Before | Now |
+| --- | --- |
+| `count(obsidian_note_wikilinks == 0)` (orphans) | `sum(obsidian_note_outlinks_bucket{le="0.0"})` |
+| `count(obsidian_note_wikilinks == N)` (distribution) | differences of `obsidian_note_outlinks_bucket` (le 0, 1, 2, 5, 10, +Inf) |
+| `topk(N, obsidian_note_wikilinks)` (outgoing links per note) | `topk(N, obsidian_top_linked_note_backlinks)` (backlinks, top 50) |
+| list of orphan notes | LogQL on note events: `{job="obsidian-parser"} \| json \| line_format "{{.line}}" \| json \| wikilinks = ""` |
+| per-note word count | LogQL: `last_over_time({job="obsidian-parser"} \| json \| line_format "{{.line}}" \| json \| unwrap word_count [7d]) by (note_name)` for a few notes (add a `note_name="..."` filter; Loki limits the series per query) |
+
+New `wikilink_count` field on each note event (numeric). Old Prometheus data for the removed series stays in local Prometheus until retention expires.
+
 ## Dashboard Queries
 
 The dashboards provisioned from `grafana/dashboards/` use LogQL (Loki) for event history and PromQL (Prometheus) for current state. They reference their datasources by the fixed uids `loki` and `prometheus`, which `grafana/provisioning/datasources/` pins, so they work on any fresh install. Representative queries (copy them into **Explore** to experiment):
@@ -344,7 +362,10 @@ count_over_time({job="obsidian-parser"} |= "wikilinks" [$__range])
 obsidian_notes_count
 obsidian_words_total
 obsidian_wikilinks_total / obsidian_notes_count   # links per note
-count(obsidian_note_wikilinks == 0)               # orphan notes
+sum(obsidian_note_outlinks_bucket{le="0.0"})      # notes without outgoing links (histogram bucket)
+topk(10, obsidian_top_linked_note_backlinks)      # most linked notes
+sum by (folder) (obsidian_folder_notes)           # notes per top-level folder
+histogram_quantile(0.5, sum by (le) (obsidian_note_length_words_bucket))  # median note length
 topk(100, obsidian_word_frequency)                # word cloud
 ```
 
@@ -365,7 +386,7 @@ The parser extracts comprehensive metadata from each note:
 - **Tags**: 
   - `tags`: Frontmatter tags (from YAML array)
   - `inline_tags`: Inline `#hashtags` extracted via regex
-- **Wikilinks**: `[[note]]` references parsed and stored for relationship analysis
+- **Wikilinks**: `[[note]]` references parsed and stored for relationship analysis (`wikilinks`: comma-joined targets, `wikilink_count`: numeric, usable with LogQL `unwrap`)
 - **File Info**: `note_name`, `file_path` (relative to vault root)
 
 **Event-Based Logging:**
@@ -381,6 +402,8 @@ log_level: "INFO"                   # DEBUG, INFO, WARNING, ERROR
 metrics_port: 8080                  # Prometheus metrics endpoint port
 metrics_refresh_interval: 300       # Seconds between vault re-scans in the metrics exporter
 start_metrics_server: false         # Enable/disable metrics server
+top_linked_notes: 50                # Most-linked notes exposed as a metric (0 disables)
+max_folders: 50                     # Top-level folders exposed individually; the rest become "(other)"
 grafana_password: "choose-one"      # Grafana admin password (required, no default)
 index_output_path: "/path/to/index" # Where export_vault_index.py writes (OpenClaw integration)
 
@@ -449,7 +472,7 @@ Five pre-configured dashboards are automatically provisioned:
 
 Off by default. When enabled, the same data the local dashboards use is also sent to your Grafana Cloud stack, so Cloud works as a backup and every dashboard works there. Local storage (Loki, Prometheus) and the local dashboards are unchanged.
 
-**What is sent (read this first).** Full detail: note titles, relative file paths (so folder names), tags, all frontmatter keys and values, wikilink targets, and the `obsidian_word_frequency` metric (the vault's top 100 body words). No note body text, excerpts or headings are sent. **Not sent:** the parser's own log (`logs/obsidian_parser.log`, `job=obsidian-cron`), which can contain absolute vault paths and stays local.
+**What is sent (read this first).** Logs, full detail: note titles, relative file paths (so folder names), tags, all frontmatter keys and values, wikilink targets. Metrics, a few hundred series only: vault totals, per-top-level-folder totals (so folder names), note length and outgoing-link histograms, the titles of the 50 most-linked notes, and the `obsidian_word_frequency` metric (the vault's top 100 body words). No note body text, excerpts or headings are sent. **Not sent:** the parser's own log (`logs/obsidian_parser.log`, `job=obsidian-cron`), which can contain absolute vault paths and stays local.
 
 **How it works.** A second Alloy container, `alloy-cloud` (compose profile `cloud`, config in `alloy/cloud.alloy`), tails `logs/obsidian_logs.json` into Grafana Cloud Loki with the same label extraction as the local pipeline, and scrapes the exporter's `/metrics` and remote-writes them to Grafana Cloud Metrics. It has its own read positions (`alloy_cloud_data` volume), so on first start it replays the whole existing log file; Grafana Cloud rejects log lines older than its ingestion window (about a week by default), so older history only reaches Cloud if you ingest it some other way.
 
@@ -469,6 +492,8 @@ Off by default. When enabled, the same data the local dashboards use is also sen
 3. Start it: `docker compose --profile cloud up -d` (plain `docker compose up -d` keeps working without these variables and never starts `alloy-cloud`). If a variable is missing, `docker compose logs alloy-cloud` shows which one. To stop forwarding, run `docker compose stop alloy-cloud` (or leave the profile off).
 
 `.env` is gitignored; never commit the token. Note that `setup.sh` runs a plain `docker compose up -d`, so re-run the `--profile cloud` command after it (or set `COMPOSE_PROFILES=cloud` in `.env`).
+
+**Metric cardinality.** Grafana Cloud bills per active series, so the exporter exposes no series per note. Series count is bounded regardless of vault size: 4 vault totals + 4 per top-level folder (at most 51 folders, extra ones are folded into `(other)`, so at most 204) + 12 note-length histogram + 8 outgoing-links histogram + at most 50 most-linked notes + at most 100 words + `up`, about 380 at the very most, and typically 200 to 300. `alloy/cloud.alloy` additionally forwards only an allowlist of these metric names and drops any series that carries a `file_path` label, so a per-note series can never reach Cloud even if one is added to the exporter. Tune with `top_linked_notes` (0 disables) and `max_folders` in `config.yaml`, or `--top-linked-notes` / `--max-folders`. Check what Cloud holds with `count({job="obsidian-metrics"})` (active series; also `count by (__name__) ({job="obsidian-metrics"})`).
 
 **Dashboards in Grafana Cloud.** Cloud's built-in datasources have different uids from the local ones (`grafanacloud-logs` and `grafanacloud-prom` instead of `loki` and `prometheus`). `scripts/import-cloud-dashboards.sh` rewrites those references on the fly and imports all five dashboards through the Grafana API, without touching the files in `grafana/dashboards/`:
 

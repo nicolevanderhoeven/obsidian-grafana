@@ -55,13 +55,14 @@ class TestRescan:
         assert sample("obsidian_word_frequency", vault="myvault", word="planet") == 1
         # Words and notes that no longer exist must disappear, not linger as stale series
         assert sample("obsidian_word_frequency", vault="myvault", word="galaxy") is None
-        assert sample("obsidian_note_wikilinks", vault="myvault", note_name="beta", file_path="beta.md") is None
+        assert sample("obsidian_folder_notes", vault="myvault", folder="(root)") == 2
 
     def test_rescan_does_not_accumulate(self, vault):
         for _ in range(3):
             parse_obsidian_vault_metrics_only(str(vault))
         assert sample("obsidian_notes_count", vault="myvault") == 2
-        assert sample("obsidian_note_total", vault="myvault", note_name="alpha", file_path="alpha.md") == 1
+        assert sample("obsidian_folder_notes", vault="myvault", folder="(root)") == 2
+        assert sample("obsidian_note_length_words_count", vault="myvault") == 2
         words_once = sample("obsidian_words_total", vault="myvault")
         parse_obsidian_vault_metrics_only(str(vault))
         assert sample("obsidian_words_total", vault="myvault") == words_once
@@ -77,9 +78,9 @@ class TestExporterLoop:
         calls = []
         real = parse_notes.parse_obsidian_vault_metrics_only
 
-        def counting(path, exclude=None):
+        def counting(path, exclude=None, *rest):
             calls.append(path)
-            real(path, exclude)
+            real(path, exclude, *rest)
             if len(calls) == 3:
                 stop.set()
 
@@ -107,10 +108,10 @@ class TestExporterLoop:
         real = parse_notes.parse_obsidian_vault_metrics_only
         n = {"calls": 0}
 
-        def flaky(path, exclude=None):
+        def flaky(path, exclude=None, *rest):
             n["calls"] += 1
             if n["calls"] == 1:
-                return real(path, exclude)
+                return real(path, exclude, *rest)
             if n["calls"] >= 3:
                 stop.set()
             raise ValueError("vault unavailable")
@@ -168,6 +169,6 @@ class TestCliConfigResolution:
         seen = {}
         monkeypatch.setattr(parse_notes, "setup_logging", lambda level: None)
         monkeypatch.setattr(parse_notes, "start_metrics_server", lambda port: seen.setdefault("port", port))
-        monkeypatch.setattr(parse_notes, "run_metrics_exporter", lambda v, e, i: seen.setdefault("interval", i))
+        monkeypatch.setattr(parse_notes, "run_metrics_exporter", lambda v, e, i, **kw: seen.update(interval=i, **kw))
         parse_notes.main(["--config", str(cfg)])
-        assert seen == {"port": 9999, "interval": 42.0}
+        assert seen == {"port": 9999, "interval": 42.0, "top_linked_notes": 50, "max_folders": 50}
