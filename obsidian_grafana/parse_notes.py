@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from collections import defaultdict
 import frontmatter
-from prometheus_client import Counter, Gauge, start_http_server as prometheus_start_http_server
+from prometheus_client import REGISTRY, CollectorRegistry, Counter, Gauge, start_http_server as prometheus_start_http_server
 import re
 
 # Defaults shared by the CLI and the config file (config.yaml overrides, CLI overrides both)
@@ -122,9 +122,22 @@ metrics_data = {
 }
 
 
+_snapshot_lock = threading.Lock()
+
+
+class _SnapshotCollector:
+    """Serve the default registry, waiting while a refresh is swapping in a new snapshot."""
+
+    def collect(self):
+        with _snapshot_lock:
+            return list(REGISTRY.collect())
+
+
 def start_metrics_server(port: int = DEFAULT_METRICS_PORT):
     """Start the Prometheus metrics HTTP server (serves /metrics from the default registry)."""
-    result = prometheus_start_http_server(port)
+    scrape_registry = CollectorRegistry()
+    scrape_registry.register(_SnapshotCollector())
+    result = prometheus_start_http_server(port, registry=scrape_registry)
     logging.info(f"Starting metrics server on port {port}")
     return result
 
@@ -474,14 +487,15 @@ def parse_obsidian_vault_metrics_only(vault_path: str, exclude_files: Optional[s
     scan = collect_vault_metrics(vault_path, exclude_files)
     vault_name = scan['vault']
 
-    reset_metrics()
-    for note in scan['notes']:
-        update_metrics(
-            note['note_name'], vault_name, note['word_count'], note['tags'],
-            note['wikilinks_count'], file_path=note['file_path'],
-        )
-    metrics_data['word_frequencies'][vault_name] = defaultdict(int, scan['word_frequencies'])
-    update_word_frequency_metrics(vault_name, top_n=100)
+    with _snapshot_lock:
+        reset_metrics()
+        for note in scan['notes']:
+            update_metrics(
+                note['note_name'], vault_name, note['word_count'], note['tags'],
+                note['wikilinks_count'], file_path=note['file_path'],
+            )
+        metrics_data['word_frequencies'][vault_name] = defaultdict(int, scan['word_frequencies'])
+        update_word_frequency_metrics(vault_name, top_n=100)
 
 
 def run_metrics_exporter(
