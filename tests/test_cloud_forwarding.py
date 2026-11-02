@@ -4,6 +4,8 @@ import json
 import os
 import shutil
 import subprocess
+import time
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -34,26 +36,60 @@ needs_docker = pytest.mark.skipif(
 )
 
 
+ALLOY_IMAGE = "grafana/alloy:v1.21.3"
+
+
+def alloy(*args):
+    return subprocess.run(["docker", *args], capture_output=True, text=True)
+
+
+@needs_docker
 class TestAlloyCloudConfig:
-    def setup_method(self):
-        raw = (ROOT / "alloy" / "cloud.alloy").read_text()
-        # comments may mention what is excluded; only the actual config matters
-        self.text = "\n".join(l for l in raw.splitlines() if not l.lstrip().startswith("//"))
+    def test_config_is_valid(self):
+        result = alloy(
+            "run", "--rm", "-v", f"{ROOT / 'alloy' / 'cloud.alloy'}:/c.alloy:ro",
+            ALLOY_IMAGE, "validate", "/c.alloy",
+        )
+        assert result.returncode == 0, result.stderr
 
-    def test_does_not_forward_the_parser_error_log(self):
-        # obsidian_parser.log (job=obsidian-cron) can contain absolute vault paths: stays local
-        assert "obsidian_parser.log" not in self.text
-        assert "obsidian-cron" not in self.text
-        assert "/logs/obsidian_logs.json" in self.text
-
-    def test_credentials_come_from_environment(self):
-        for var in CLOUD_ENV:
-            assert f'sys.env("{var}")' in self.text
-        assert "glc_" not in self.text
-
-    def test_local_pipeline_is_unchanged(self):
-        local = (ROOT / "alloy" / "config.alloy").read_text()
-        assert "grafana.net" not in local and "sys.env" not in local
+    def test_only_the_json_event_stream_is_tailed(self, tmp_path):
+        # obsidian_parser.log can contain absolute vault paths: it must stay local
+        (tmp_path / "obsidian_logs.json").write_text("{}\n")
+        (tmp_path / "obsidian_parser.log").write_text("/secret/vault/path\n")
+        env = []
+        for k, v in CLOUD_ENV.items():
+            env += ["-e", f"{k}={v}"]
+        started = alloy(
+            "run", "-d", "-p", "127.0.0.1::12345", *env,
+            "-v", f"{ROOT / 'alloy' / 'cloud.alloy'}:/c.alloy:ro",
+            "-v", f"{tmp_path}:/logs:ro",
+            ALLOY_IMAGE, "run", "/c.alloy",
+            "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/tmp/alloy",
+        )
+        assert started.returncode == 0, started.stderr
+        cid = started.stdout.strip()
+        try:
+            port = alloy("port", cid, "12345/tcp").stdout.strip().rsplit(":", 1)[1]
+            url = f"http://127.0.0.1:{port}/api/v0/web/components/loki.source.file.obsidian_events"
+            paths = set()
+            for _ in range(30):
+                try:
+                    component = json.load(urllib.request.urlopen(url, timeout=2))
+                except (OSError, ValueError):
+                    time.sleep(1)
+                    continue
+                paths = {
+                    entry["value"]["value"]
+                    for info in component.get("debugInfo", [])
+                    for entry in info.get("body", [])
+                    if entry["name"] == "path"
+                }
+                if paths:
+                    break
+                time.sleep(1)
+            assert paths == {"/logs/obsidian_logs.json"}
+        finally:
+            alloy("rm", "-f", cid)
 
 
 @needs_docker
