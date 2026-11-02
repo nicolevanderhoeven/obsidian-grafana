@@ -756,9 +756,9 @@ The cron-based parser runs on the host and continues writing to `obsidian_logs.j
 
 **Requirements for seamless recovery:**
 - The `alloy_data` volume must survive the restart (avoid `docker compose down -v`)
-- Entries must not be older than `reject_old_samples_max_age` (currently 8760h / 365 days) in `loki-config.yaml`
+- Entries must not be older than `reject_old_samples_max_age` (currently 17520h / 730 days) in `loki-config.yaml`
 
-**If Docker is down for longer than 365 days**, Loki will reject the oldest entries. To recover:
+**If Docker is down for longer than 730 days**, Loki will reject the oldest entries. To recover:
 
 1. Stop Loki and Alloy: `docker compose stop loki alloy`
 2. Remove their containers and volumes: `docker compose rm -f loki alloy && docker volume rm obsidian-grafana_loki_data obsidian-grafana_alloy_data`
@@ -773,6 +773,8 @@ The cron-based parser runs on the host and continues writing to `obsidian_logs.j
 4. Start fresh: `docker compose up -d loki && sleep 5 && docker compose up -d alloy`
 5. Wait for Alloy to finish re-ingesting (check `docker compose logs alloy` for errors)
 6. Revert `loki-config.yaml` to normal values and restart Loki: `docker compose restart loki`
+
+**Why 17520h (two years)?** `max_chunk_age` and `reject_old_samples_max_age` default here to 17520h so that up to two years of vault history can be restored or replayed (for example when re-ingesting an old `obsidian_logs.json`) without Loki rejecting entries as too old or flushing them in odd chunks. Trade-offs: Loki accepts writes up to two years in the past, so a badly timestamped entry will no longer be rejected as "too old" until it is older than that, and ingester chunks may stay in memory longer before being flushed. Be careful when lowering these values on a running install: reverting and restarting Loki before the WAL has been replayed can cause old entries in the WAL to be dropped, so avoid restarting Loki casually after a large replay.
 
 ### Monitoring & Reliability
 - Add health checks to `docker-compose.yml` for all services
