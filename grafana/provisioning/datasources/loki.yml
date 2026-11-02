@@ -1,7 +1,16 @@
 apiVersion: 1
 
+# Remove any datasource of this name first. Datasources created by older versions of
+# this repo got a random uid, and Grafana refuses to start if provisioning tries to
+# give an existing datasource a different uid. Deleting by name lets existing installs
+# upgrade to the pinned uid below (dashboards reference the uid, not the numeric id).
+deleteDatasources:
+  - name: Loki
+    orgId: 1
+
 datasources:
   - name: Loki
+    uid: loki  # pinned: dashboards reference this uid
     type: loki
     access: proxy
     url: http://loki:3100

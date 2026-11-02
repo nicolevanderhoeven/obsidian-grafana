@@ -10,7 +10,7 @@ This script is a one-time migration tool that:
 5. Validates and atomically replaces the original file
 
 Usage:
-    python backfill_event_type.py [--logs-dir /path/to/logs] [--dry-run]
+    python scripts/legacy/backfill_event_type.py [--logs-dir /path/to/logs] [--dry-run]
 """
 
 import argparse
@@ -304,7 +304,7 @@ def main():
     parser.add_argument(
         '--logs-dir',
         type=Path,
-        default=Path(__file__).parent / 'logs',
+        default=Path(__file__).resolve().parents[2] / 'logs',
         help='Directory containing log files (default: ./logs)'
     )
     parser.add_argument(

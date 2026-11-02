@@ -7,20 +7,26 @@ for visualization in Grafana via Loki.
 """
 
 import os
+import sys
 import json
 import yaml
 import logging
 import argparse
 import threading
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, List
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import Dict, Any, List, Optional
 from collections import defaultdict
 import frontmatter
-from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import REGISTRY, CollectorRegistry, Counter, Gauge, start_http_server as prometheus_start_http_server
 import re
+
+# Defaults shared by the CLI and the config file (config.yaml overrides, CLI overrides both)
+DEFAULT_OUTPUT_FILE = './logs/obsidian_logs.json'
+DEFAULT_LOG_LEVEL = 'INFO'
+DEFAULT_METRICS_PORT = 8080
+# Seconds between vault re-scans when running the metrics exporter (matches the 5 minute cron cadence)
+DEFAULT_REFRESH_INTERVAL = 300
 
 # Stopwords for word cloud filtering (common English words + markdown/URL artifacts)
 STOPWORDS = frozenset([
@@ -116,39 +122,28 @@ metrics_data = {
 }
 
 
-class MetricsHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/metrics':
-            self.send_response(200)
-            self.send_header('Content-Type', CONTENT_TYPE_LATEST)
-            self.end_headers()
-            self.wfile.write(generate_latest())
-        else:
-            self.send_response(404)
-            self.end_headers()
+_snapshot_lock = threading.Lock()
 
 
-def start_metrics_server(port: int = 8080):
-    """Start the Prometheus metrics HTTP server."""
-    server = HTTPServer(('0.0.0.0', port), MetricsHandler)
+class _SnapshotCollector:
+    """Serve the default registry, waiting while a refresh is swapping in a new snapshot."""
+
+    def collect(self):
+        with _snapshot_lock:
+            return list(REGISTRY.collect())
+
+
+def start_metrics_server(port: int = DEFAULT_METRICS_PORT):
+    """Start the Prometheus metrics HTTP server (serves /metrics from the default registry)."""
+    scrape_registry = CollectorRegistry()
+    scrape_registry.register(_SnapshotCollector())
+    result = prometheus_start_http_server(port, registry=scrape_registry)
     logging.info(f"Starting metrics server on port {port}")
-    
-    def run_server():
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            logging.info("Shutting down metrics server")
-            server.shutdown()
-    
-    thread = threading.Thread(target=run_server, daemon=True)
-    thread.start()
-    return server
+    return result
 
 
 def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str], wikilinks_count: int = 0, file_path: str = ""):
     """Update Prometheus metrics with new note data."""
-    global metrics_data
-    
     # Update global state
     metrics_data['unique_notes'].add(note_name)
     metrics_data['total_words'] += word_count
@@ -224,8 +219,6 @@ def update_word_frequency_metrics(vault: str, top_n: int = 100) -> None:
         vault: The vault name
         top_n: Number of top words to expose as metrics (default 100)
     """
-    global metrics_data
-    
     word_counts = metrics_data['word_frequencies'][vault]
     if not word_counts:
         return
@@ -233,10 +226,7 @@ def update_word_frequency_metrics(vault: str, top_n: int = 100) -> None:
     # Get top N words sorted by frequency
     top_words = sorted(word_counts.items(), key=lambda x: x[1], reverse=True)[:top_n]
     
-    # Clear existing metrics for this vault to avoid stale data
-    # Note: prometheus_client doesn't have a clean way to remove specific labels,
-    # so we set the values for top words and they'll replace previous values
-    
+    # Stale words are dropped by reset_metrics() before every exporter re-scan.
     for word, count in top_words:
         obsidian_word_frequency.labels(vault=vault, word=word).set(count)
     
@@ -290,7 +280,6 @@ def extract_frontmatter_metadata(file_path: Path) -> Dict[str, Any]:
         
         # Extract inline tags from content
         content = post.content
-        import re
         inline_tags = re.findall(r'#(\w+)', content)
         if inline_tags:
             metadata['inline_tags'] = ",".join(inline_tags)
@@ -388,86 +377,156 @@ def create_loki_labels(note_name: str, vault_name: str, metadata: Dict[str, Any]
     return labels
 
 
-def parse_obsidian_vault_metrics_only(vault_path: str, exclude_files: set = None) -> None:
-    """Parse all markdown files in the Obsidian vault and update metrics only (no file output)."""
-    global metrics_data
-    
+def reset_metrics() -> None:
+    """Drop all accumulated metric state so a fresh vault scan can repopulate it.
+
+    Without this, every re-scan would add to the counters and sums built by the
+    previous one, and notes or words that no longer exist would never disappear.
+    """
+    metrics_data['unique_notes'] = set()
+    metrics_data['unique_tags'] = set()
+    metrics_data['total_words'] = 0
+    metrics_data['vault_counts'].clear()
+    metrics_data['word_frequencies'].clear()
+    for metric in (
+        obsidian_note_total,
+        obsidian_word_count_total,
+        obsidian_tags_total,
+        obsidian_notes_gauge,
+        obsidian_words_gauge,
+        obsidian_tags_gauge,
+        obsidian_wikilinks_gauge,
+        obsidian_note_wikilinks,
+        obsidian_word_frequency,
+    ):
+        metric.clear()
+
+
+def _split_csv(value: str) -> List[str]:
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
+def _note_tags_and_wikilinks(all_metadata: Dict[str, Any]):
+    """Return (tags, wikilink_count) from the comma-joined metadata fields."""
+    tags: List[str] = []
+    if 'tags' in all_metadata:
+        tags = _split_csv(all_metadata['tags'])
+    if 'inline_tags' in all_metadata:
+        tags.extend(_split_csv(all_metadata['inline_tags']))
+    wikilinks_count = len(_split_csv(all_metadata['wikilinks'])) if 'wikilinks' in all_metadata else 0
+    return tags, wikilinks_count
+
+
+def collect_vault_metrics(vault_path: str, exclude_files: Optional[set] = None) -> Dict[str, Any]:
+    """Scan the vault and return per-note metric inputs without touching any metric.
+
+    Keeping the (slow) filesystem scan separate from the (fast) metric update lets
+    the exporter swap in a complete new snapshot instead of exposing a half-built one.
+    """
     vault_path = Path(vault_path)
     if not vault_path.exists():
         raise ValueError(f"Vault path does not exist: {vault_path}")
-    
+
     exclude_files = exclude_files or set()
     vault_name = vault_path.name
-    
-    # Reset word frequencies for this vault (since we're recalculating)
-    metrics_data['word_frequencies'][vault_name] = defaultdict(int)
-    
-    # Find all markdown files
+    notes: List[Dict[str, Any]] = []
+    word_frequencies: Dict[str, int] = defaultdict(int)
+
     md_files = list(vault_path.rglob("*.md"))
     logging.info(f"Found {len(md_files)} markdown files in {vault_path}")
-    
+
     for file_path in md_files:
         try:
             # Skip hidden files and directories
             if any(part.startswith('.') for part in file_path.parts):
                 continue
-            
+
             note_name = file_path.stem
             if note_name in exclude_files:
                 logging.debug(f"Skipping excluded file: {file_path.name}")
                 continue
             relative_path = str(file_path.relative_to(vault_path))
-            
+
             # Extract all metadata
             basic_stats = extract_basic_stats(file_path)
             frontmatter_metadata = extract_frontmatter_metadata(file_path)
-            timestamps = get_file_timestamps(file_path)
-            
+
             # Extract word frequencies from content (excluding frontmatter)
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     post = frontmatter.load(f)
-                content = post.content
-                word_freqs = extract_word_frequencies(content)
-                # Aggregate word frequencies for this vault
-                for word, count in word_freqs.items():
-                    metrics_data['word_frequencies'][vault_name][word] += count
+                for word, count in extract_word_frequencies(post.content).items():
+                    word_frequencies[word] += count
             except Exception as e:
                 logging.debug(f"Could not extract word frequencies from {file_path}: {e}")
-            
-            # Combine all metadata (excluding internal timestamp field)
-            all_metadata = {
-                **basic_stats,
-                **frontmatter_metadata,
-                **{k: v for k, v in timestamps.items() if k != 'modified_at_timestamp'},
+
+            tags, wikilinks_count = _note_tags_and_wikilinks(frontmatter_metadata)
+            notes.append({
+                'note_name': note_name,
                 'file_path': relative_path,
-                'note_name': note_name
-            }
-            
-            # Update Prometheus metrics
-            tags = []
-            if 'tags' in all_metadata:
-                tags = [tag.strip() for tag in all_metadata['tags'].split(',') if tag.strip()]
-            if 'inline_tags' in all_metadata:
-                tags.extend([tag.strip() for tag in all_metadata['inline_tags'].split(',') if tag.strip()])
-            
-            # Count wikilinks
-            wikilinks_count = 0
-            if 'wikilinks' in all_metadata:
-                wikilinks_count = len([link.strip() for link in all_metadata['wikilinks'].split(',') if link.strip()])
-            
-            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags, wikilinks_count, file_path=relative_path)
-            
+                'word_count': basic_stats.get('word_count', 0),
+                'tags': tags,
+                'wikilinks_count': wikilinks_count,
+            })
+
             logging.debug(f"Processed: {relative_path}")
-            
+
         except Exception as e:
             logging.error(f"Error processing {file_path}: {e}")
             continue
-    
-    # Update word frequency Prometheus metrics
-    update_word_frequency_metrics(vault_name, top_n=100)
-    
+
     logging.info(f"Processed {len(md_files)} files for metrics")
+    return {'vault': vault_name, 'notes': notes, 'word_frequencies': dict(word_frequencies)}
+
+
+def parse_obsidian_vault_metrics_only(vault_path: str, exclude_files: Optional[set] = None) -> None:
+    """Parse all markdown files in the Obsidian vault and replace the metrics (no file output).
+
+    Safe to call repeatedly: each call discards the previous snapshot and rebuilds it.
+    """
+    scan = collect_vault_metrics(vault_path, exclude_files)
+    vault_name = scan['vault']
+
+    with _snapshot_lock:
+        reset_metrics()
+        for note in scan['notes']:
+            update_metrics(
+                note['note_name'], vault_name, note['word_count'], note['tags'],
+                note['wikilinks_count'], file_path=note['file_path'],
+            )
+        metrics_data['word_frequencies'][vault_name] = defaultdict(int, scan['word_frequencies'])
+        update_word_frequency_metrics(vault_name, top_n=100)
+
+
+def run_metrics_exporter(
+    vault_path: str,
+    exclude_files: Optional[set] = None,
+    refresh_interval: float = DEFAULT_REFRESH_INTERVAL,
+    stop_event: Optional[threading.Event] = None,
+) -> None:
+    """Scan the vault, then keep re-scanning every ``refresh_interval`` seconds until stopped.
+
+    The first scan must succeed (a bad vault path is a configuration error). Later
+    scan failures are logged and the previous snapshot keeps being served.
+    """
+    if refresh_interval <= 0:
+        raise ValueError("refresh interval must be greater than zero")
+    stop_event = stop_event or threading.Event()
+
+    parse_obsidian_vault_metrics_only(vault_path, exclude_files)
+    logging.info("Metrics parsing completed successfully")
+    logging.info(f"Metrics server is running; re-scanning every {refresh_interval:g}s. Press Ctrl+C to stop.")
+
+    while not stop_event.wait(refresh_interval):
+        try:
+            parse_obsidian_vault_metrics_only(vault_path, exclude_files)
+        except Exception as e:
+            logging.error(f"Metrics refresh failed, keeping previous values: {e}")
+
+
+def _utcnow() -> datetime:
+    """Naive UTC timestamp (the format already used in log entries and .last_run)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set = None) -> None:
@@ -565,7 +624,7 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
             
             # Create log entry
             entry = {
-                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'timestamp': _utcnow().isoformat() + 'Z',
                 'labels': labels,
                 'line': json.dumps(all_metadata)
             }
@@ -573,17 +632,7 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
             entries.append(entry)
             
             # Update Prometheus metrics
-            tags = []
-            if 'tags' in all_metadata:
-                tags = [tag.strip() for tag in all_metadata['tags'].split(',') if tag.strip()]
-            if 'inline_tags' in all_metadata:
-                tags.extend([tag.strip() for tag in all_metadata['inline_tags'].split(',') if tag.strip()])
-            
-            # Count wikilinks
-            wikilinks_count = 0
-            if 'wikilinks' in all_metadata:
-                wikilinks_count = len([link.strip() for link in all_metadata['wikilinks'].split(',') if link.strip()])
-            
+            tags, wikilinks_count = _note_tags_and_wikilinks(all_metadata)
             update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags, wikilinks_count, file_path=relative_path)
             
             logging.debug(f"Processed: {relative_path}")
@@ -593,7 +642,7 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
             continue
     
     # Record the current time before writing (for next run)
-    current_run_time = datetime.utcnow()
+    current_run_time = _utcnow()
     
     # Write to output file (event-based logging: only append changes)
     try:
@@ -630,51 +679,60 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
         raise
 
 
-def main():
-    """Main entry point."""
+def _setting(cli_value, config: Dict[str, Any], key: str, default):
+    """Resolve a setting: CLI argument, then config file, then built-in default."""
+    if cli_value is not None:
+        return cli_value
+    value = config.get(key)
+    return default if value is None else value
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Parse Obsidian notes for Grafana monitoring')
     parser.add_argument('--config', default='config.yaml', help='Configuration file path')
     parser.add_argument('--vault-path', help='Override vault path from config')
-    parser.add_argument('--output', help='Override output file from config')
-    parser.add_argument('--log-level', default='INFO', help='Log level')
-    parser.add_argument('--metrics-port', type=int, default=8080, help='Port for Prometheus metrics server')
+    parser.add_argument('--output', help=f'Override output file from config (default: {DEFAULT_OUTPUT_FILE})')
+    parser.add_argument('--log-level', help=f'Log level (default: config log_level, else {DEFAULT_LOG_LEVEL})')
+    parser.add_argument('--metrics-port', type=int,
+                        help=f'Port for Prometheus metrics server (default: config metrics_port, else {DEFAULT_METRICS_PORT})')
+    parser.add_argument('--refresh-interval', type=float,
+                        help='Seconds between vault re-scans when the metrics server is running '
+                             f'(default: config metrics_refresh_interval, else {DEFAULT_REFRESH_INTERVAL})')
     parser.add_argument('--start-metrics-server', action='store_true', help='Start the Prometheus metrics server')
-    
-    args = parser.parse_args()
-    
+    return parser
+
+
+def main(argv: Optional[List[str]] = None):
+    """Main entry point."""
+    args = build_arg_parser().parse_args(argv)
+
     # Load configuration
-    config = {}
+    config: Dict[str, Any] = {}
     if os.path.exists(args.config):
         with open(args.config, 'r') as f:
-            config = yaml.safe_load(f)
-    
-    # Override with command line arguments
+            config = yaml.safe_load(f) or {}
+
+    # Resolve settings: command line > config file > built-in default
     vault_path = args.vault_path or config.get('vault_path')
-    output_file = args.output or config.get('output_file', '/tmp/obsidian_logs.json')
-    log_level = args.log_level or config.get('log_level', 'INFO')
-    metrics_port = args.metrics_port or config.get('metrics_port', 8080)
+    output_file = _setting(args.output, config, 'output_file', DEFAULT_OUTPUT_FILE)
+    log_level = _setting(args.log_level, config, 'log_level', DEFAULT_LOG_LEVEL)
+    metrics_port = _setting(args.metrics_port, config, 'metrics_port', DEFAULT_METRICS_PORT)
+    refresh_interval = _setting(args.refresh_interval, config, 'metrics_refresh_interval', DEFAULT_REFRESH_INTERVAL)
     start_metrics_server_flag = args.start_metrics_server or config.get('start_metrics_server', False)
     exclude_files = set(config.get('exclude_files', []))
-    
+
     if not vault_path:
         raise ValueError("Vault path must be specified in config file or --vault-path argument")
-    
+
     setup_logging(log_level)
-    
-    # Start metrics server if requested
-    if start_metrics_server_flag:
-        start_metrics_server(metrics_port)
-        logging.info(f"Metrics server started on port {metrics_port}")
-    
+
     try:
         if start_metrics_server_flag:
             # In metrics-only mode, don't write to file, just parse for metrics
-            parse_obsidian_vault_metrics_only(vault_path, exclude_files)
-            logging.info("Metrics parsing completed successfully")
-            logging.info("Metrics server is running. Press Ctrl+C to stop.")
+            start_metrics_server(int(metrics_port))
+            logging.info(f"Metrics server started on port {metrics_port}")
             try:
-                while True:
-                    time.sleep(1)
+                run_metrics_exporter(vault_path, exclude_files, float(refresh_interval))
             except KeyboardInterrupt:
                 logging.info("Shutting down...")
         else:
@@ -682,7 +740,7 @@ def main():
             logging.info("Parsing completed successfully")
     except Exception as e:
         logging.error(f"Parsing failed: {e}")
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

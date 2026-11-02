@@ -7,7 +7,6 @@ Scans an Obsidian vault and generates a two-tier Markdown index:
 - vault_index_full.md: All notes with structural metadata (searchable via memory_search)
 """
 
-import os
 import re
 import sys
 import yaml

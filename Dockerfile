@@ -2,15 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy requirements and install dependencies
+# Install dependencies first so this layer is cached across code changes
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the parse_notes.py script
-COPY parse_notes.py .
+# Copy the application package (the only code the exporter needs)
+COPY obsidian_grafana ./obsidian_grafana
 
 # Expose the metrics port
 EXPOSE 8080
 
-# Default command (can be overridden in docker-compose.yml)
-CMD ["python3", "parse_notes.py", "--help"]
+# Default command (overridden in docker-compose.yml)
+CMD ["python3", "-m", "obsidian_grafana.parse_notes", "--help"]

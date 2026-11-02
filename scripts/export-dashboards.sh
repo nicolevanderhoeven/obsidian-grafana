@@ -8,14 +8,6 @@ DASHBOARD_DIR="${REPO_DIR}/grafana/dashboards"
 GRAFANA_URL="${GRAFANA_URL:-http://localhost:3000}"
 GRAFANA_USER="${GRAFANA_USER:-admin}"
 
-if [ -z "${GRAFANA_PASSWORD:-}" ]; then
-  CONFIG_FILE="${REPO_DIR}/config.yaml"
-  if [ -f "$CONFIG_FILE" ]; then
-    GRAFANA_PASSWORD=$(sed -n 's/^grafana_password:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}[[:space:]]*$/\1/p' "$CONFIG_FILE" 2>/dev/null || true)
-  fi
-  GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-${GF_SECURITY_ADMIN_PASSWORD:-admin}}"
-fi
-
 if ! command -v jq &>/dev/null; then
   echo "Error: jq is required but not installed. Install with: brew install jq" >&2
   exit 1
@@ -24,6 +16,17 @@ fi
 if ! curl -sf "${GRAFANA_URL}/api/health" &>/dev/null; then
   echo "Warning: Grafana is not reachable at ${GRAFANA_URL} — skipping dashboard export." >&2
   exit 0
+fi
+
+if [ -z "${GRAFANA_PASSWORD:-}" ]; then
+  CONFIG_FILE="${REPO_DIR}/config.yaml"
+  if [ -f "$CONFIG_FILE" ]; then
+    GRAFANA_PASSWORD=$(sed -n 's/^grafana_password:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}[[:space:]]*$/\1/p' "$CONFIG_FILE" 2>/dev/null || true)
+  fi
+fi
+if [ -z "${GRAFANA_PASSWORD:-}" ]; then
+  echo "Error: GRAFANA_PASSWORD is not set and config.yaml has no grafana_password. There is no default password." >&2
+  exit 1
 fi
 
 uid_to_filename() {

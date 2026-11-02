@@ -43,7 +43,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -94,7 +94,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "obsidian_notes_count",
           "instant": true,
@@ -109,7 +109,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -160,7 +160,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "obsidian_words_total",
           "instant": true,
@@ -175,7 +175,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -226,7 +226,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "obsidian_tags_count",
           "instant": true,
@@ -241,7 +241,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -292,7 +292,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "direction": "backward",
           "editorMode": "code",
@@ -309,7 +309,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -352,7 +352,7 @@
           "color": "rgba(255,0,255,0.7)"
         },
         "filterValues": {
-          "le": 1E-9
+          "le": 1e-09
         },
         "legend": {
           "show": true
@@ -379,7 +379,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "expr": "sum(count_over_time({job=\"obsidian-parser\", event_type=\"created\"}[1h]))",
           "hide": true,
@@ -408,7 +408,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -451,7 +451,7 @@
           "color": "rgba(255,0,255,0.7)"
         },
         "filterValues": {
-          "le": 1E-9
+          "le": 1e-09
         },
         "legend": {
           "show": true
@@ -478,7 +478,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "expr": "sum(count_over_time({job=\"obsidian-parser\", event_type=\"modified\"}[1h]))",
           "hide": true,
@@ -507,7 +507,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -596,7 +596,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "expr": "sum by (vault) (count_over_time({job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\" [$__auto]))",
           "instant": false,
@@ -612,7 +612,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -675,7 +675,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "direction": "backward",
           "editorMode": "code",
@@ -733,7 +733,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -847,7 +847,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "expr": "sum by (event_type) (count_over_time({job=\"obsidian-parser\", event_type=~\"$event_type\"} [$__interval]))",
           "instant": false,
@@ -883,7 +883,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -946,7 +946,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "obsidian_wikilinks_total / obsidian_notes_count",
           "refId": "A"
@@ -958,7 +958,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "description": "Notes with zero backlinks (not referenced by any other note)",
       "fieldConfig": {
@@ -1018,7 +1018,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "count(obsidian_note_wikilinks == 0)",
           "instant": true,
@@ -1034,7 +1034,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "description": "Notes with zero wikilinks (not linking to any other note)",
       "fieldConfig": {
@@ -1106,7 +1106,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "obsidian_note_wikilinks == 0",
           "instant": true,
@@ -1151,7 +1151,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "description": "How many notes fall into each outgoing-link-count bucket",
       "fieldConfig": {
@@ -1215,7 +1215,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "count(obsidian_note_wikilinks == 0)",
           "instant": true,
@@ -1228,7 +1228,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "count(obsidian_note_wikilinks == 1)",
           "instant": true,
@@ -1241,7 +1241,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "count(obsidian_note_wikilinks == 2)",
           "instant": true,
@@ -1254,7 +1254,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "count(obsidian_note_wikilinks >= 3 and obsidian_note_wikilinks <= 5)",
           "instant": true,
@@ -1267,7 +1267,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "count(obsidian_note_wikilinks >= 6 and obsidian_note_wikilinks <= 10)",
           "instant": true,
@@ -1280,7 +1280,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "count(obsidian_note_wikilinks > 10)",
           "instant": true,
@@ -1296,7 +1296,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "description": "Notes with the highest number of backlinks (incoming references)",
       "fieldConfig": {
@@ -1392,7 +1392,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "topk(50, obsidian_note_wikilinks{file_path!~\".*ttrpgs.*\"})",
           "instant": true,
@@ -1461,7 +1461,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -1540,7 +1540,7 @@
           "app": "grafana-assistant-app",
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "expr": "{job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | modified_at != \"\"",
           "instant": false,
@@ -1637,7 +1637,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -1694,7 +1694,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "expr": "topk(50, obsidian_word_frequency)",
           "format": "time_series",
@@ -1722,7 +1722,7 @@
         },
         "datasource": {
           "type": "loki",
-          "uid": "P8E80F9AEF21F6940"
+          "uid": "loki"
         },
         "definition": "label_values({job=\"obsidian-parser\"}, event_type)",
         "includeAll": true,
