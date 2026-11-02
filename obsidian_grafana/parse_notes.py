@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from collections import defaultdict
 import frontmatter
-from prometheus_client import REGISTRY, CollectorRegistry, Counter, Gauge, start_http_server as prometheus_start_http_server
+from prometheus_client import REGISTRY, CollectorRegistry, Counter, Gauge, Histogram, start_http_server as prometheus_start_http_server
 import re
 
 # Defaults shared by the CLI and the config file (config.yaml overrides, CLI overrides both)
@@ -27,6 +27,15 @@ DEFAULT_LOG_LEVEL = 'INFO'
 DEFAULT_METRICS_PORT = 8080
 # Seconds between vault re-scans when running the metrics exporter (matches the 5 minute cron cadence)
 DEFAULT_REFRESH_INTERVAL = 300
+# Low-series aggregates: how many most-linked notes to expose (0 disables) and the folder series cap
+DEFAULT_TOP_LINKED_NOTES = 50
+DEFAULT_MAX_FOLDERS = 50
+ROOT_FOLDER = '(root)'
+OTHER_FOLDER = '(other)'
+# Upper bounds (in words) of the note length histogram; +Inf is added automatically
+NOTE_LENGTH_BUCKETS = (10, 50, 100, 250, 500, 1000, 2500, 5000, 10000)
+# Upper bounds of the outgoing links per note histogram (le="0" counts notes without outgoing links)
+NOTE_LINK_BUCKETS = (0, 1, 2, 5, 10)
 
 # Stopwords for word cloud filtering (common English words + markdown/URL artifacts)
 STOPWORDS = frozenset([
@@ -99,18 +108,26 @@ STOPWORDS = frozenset([
     'asin', 'isbn', 'doi', 'ref', 'utm', 'param', 'query', 'index',
 ])
 
-# Prometheus metrics
-obsidian_note_total = Counter('obsidian_note_total', 'Total number of unique notes', ['vault', 'note_name', 'file_path'])
-obsidian_word_count_total = Counter('obsidian_word_count_total', 'Total word count across all notes', ['vault', 'note_name', 'file_path'])
-obsidian_tags_total = Counter('obsidian_tags_total', 'Total number of unique tags', ['vault', 'note_name', 'file_path'])
-
-# Gauges for current state
+# Prometheus metrics. Only low-cardinality series are exposed: nothing is labelled per note
+# (per-note facts live in the Loki note events), so the same series can be used locally and in Grafana Cloud.
 obsidian_notes_gauge = Gauge('obsidian_notes_count', 'Current number of unique notes', ['vault'])
 obsidian_words_gauge = Gauge('obsidian_words_total', 'Current total word count', ['vault'])
 obsidian_tags_gauge = Gauge('obsidian_tags_count', 'Current number of unique tags', ['vault'])
 obsidian_wikilinks_gauge = Gauge('obsidian_wikilinks_total', 'Current total number of wikilinks', ['vault'])
-obsidian_note_wikilinks = Gauge('obsidian_note_wikilinks', 'Number of wikilinks in each note', ['vault', 'note_name', 'file_path'])
 obsidian_word_frequency = Gauge('obsidian_word_frequency', 'Word frequency in vault (top 100 words)', ['vault', 'word'])
+
+# Low-series aggregates (safe to forward to Grafana Cloud: cardinality does not grow with the note count)
+obsidian_folder_notes = Gauge('obsidian_folder_notes', 'Number of notes per top-level folder', ['vault', 'folder'])
+obsidian_folder_words = Gauge('obsidian_folder_words', 'Total word count per top-level folder', ['vault', 'folder'])
+obsidian_folder_wikilinks = Gauge('obsidian_folder_wikilinks', 'Total wikilinks per top-level folder', ['vault', 'folder'])
+obsidian_folder_tags = Gauge('obsidian_folder_tags', 'Number of unique tags per top-level folder', ['vault', 'folder'])
+obsidian_note_length_words = Histogram(
+    'obsidian_note_length_words', 'Distribution of note length in words', ['vault'], buckets=NOTE_LENGTH_BUCKETS)
+obsidian_note_outlinks = Histogram(
+    'obsidian_note_outlinks', 'Distribution of outgoing wikilinks per note', ['vault'], buckets=NOTE_LINK_BUCKETS)
+obsidian_top_linked_note_backlinks = Gauge(
+    'obsidian_top_linked_note_backlinks', 'Backlinks (distinct notes linking in) for the most-linked notes',
+    ['vault', 'note_name'])
 
 # Global state for metrics
 metrics_data = {
@@ -142,8 +159,8 @@ def start_metrics_server(port: int = DEFAULT_METRICS_PORT):
     return result
 
 
-def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str], wikilinks_count: int = 0, file_path: str = ""):
-    """Update Prometheus metrics with new note data."""
+def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str], wikilinks_count: int = 0):
+    """Update the vault totals with new note data."""
     # Update global state
     metrics_data['unique_notes'].add(note_name)
     metrics_data['total_words'] += word_count
@@ -156,18 +173,80 @@ def update_metrics(note_name: str, vault: str, word_count: int, tags: List[str],
         metrics_data['unique_tags'].add(tag)
         metrics_data['vault_counts'][vault]['tags'].add(tag)
     
-    # Update counters
-    obsidian_note_total.labels(vault=vault, note_name=note_name, file_path=file_path).inc()
-    obsidian_word_count_total.labels(vault=vault, note_name=note_name, file_path=file_path).inc(word_count)
-    for tag in tags:
-        obsidian_tags_total.labels(vault=vault, note_name=note_name, file_path=file_path).inc()
-    
     # Update gauges
     obsidian_notes_gauge.labels(vault=vault).set(len(metrics_data['vault_counts'][vault]['notes']))
     obsidian_words_gauge.labels(vault=vault).set(metrics_data['vault_counts'][vault]['words'])
     obsidian_tags_gauge.labels(vault=vault).set(len(metrics_data['vault_counts'][vault]['tags']))
     obsidian_wikilinks_gauge.labels(vault=vault).set(metrics_data['vault_counts'][vault]['wikilinks'])
-    obsidian_note_wikilinks.labels(vault=vault, note_name=note_name, file_path=file_path).set(wikilinks_count)
+
+
+def _top_level_folder(file_path: str) -> str:
+    parts = Path(file_path).parts
+    return parts[0] if len(parts) > 1 else ROOT_FOLDER
+
+
+def _link_target(raw: str) -> str:
+    """Normalise the inside of a [[wikilink]] to a note name (drop alias, heading, folder and .md)."""
+    target = raw.split('|')[0].split('#')[0].strip()
+    if target.endswith('.md'):
+        target = target[:-3]
+    return target.rsplit('/', 1)[-1].strip()
+
+
+def compute_backlinks(notes: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Map note_name -> number of distinct notes linking to it (links to missing notes are ignored)."""
+    canonical: Dict[str, str] = {}
+    for note in notes:
+        canonical.setdefault(note['note_name'].casefold(), note['note_name'])
+    sources: Dict[str, set] = defaultdict(set)
+    for note in notes:
+        for raw in note.get('link_targets', []):
+            name = canonical.get(_link_target(raw).casefold())
+            if name is not None and name != note['note_name']:
+                sources[name].add(note['file_path'])
+    return {name: len(srcs) for name, srcs in sources.items()}
+
+
+def update_aggregate_metrics(vault: str, notes: List[Dict[str, Any]],
+                             top_linked_notes: int = DEFAULT_TOP_LINKED_NOTES,
+                             max_folders: int = DEFAULT_MAX_FOLDERS) -> None:
+    """Expose low-cardinality aggregates: per top-level folder totals, note length histogram, most-linked notes.
+
+    Series count is bounded by ``max_folders`` (+1 for the '(other)' bucket) and ``top_linked_notes``
+    regardless of how many notes the vault has.
+    """
+    folders: Dict[str, Dict[str, Any]] = defaultdict(lambda: {'notes': 0, 'words': 0, 'wikilinks': 0, 'tags': set()})
+    for note in notes:
+        agg = folders[_top_level_folder(note['file_path'])]
+        agg['notes'] += 1
+        agg['words'] += note['word_count']
+        agg['wikilinks'] += note['wikilinks_count']
+        agg['tags'].update(note['tags'])
+        obsidian_note_length_words.labels(vault=vault).observe(note['word_count'])
+        obsidian_note_outlinks.labels(vault=vault).observe(note['wikilinks_count'])
+
+    # Keep the largest folders; fold the rest into one bucket so cardinality stays bounded
+    ranked = sorted(folders.items(), key=lambda kv: (-kv[1]['notes'], kv[0]))
+    kept, rest = ranked[:max_folders], ranked[max_folders:]
+    if rest:
+        other: Dict[str, Any] = {'notes': 0, 'words': 0, 'wikilinks': 0, 'tags': set()}
+        for _, agg in rest:
+            other['notes'] += agg['notes']
+            other['words'] += agg['words']
+            other['wikilinks'] += agg['wikilinks']
+            other['tags'] |= agg['tags']
+        kept.append((OTHER_FOLDER, other))
+    for folder, agg in kept:
+        obsidian_folder_notes.labels(vault=vault, folder=folder).set(agg['notes'])
+        obsidian_folder_words.labels(vault=vault, folder=folder).set(agg['words'])
+        obsidian_folder_wikilinks.labels(vault=vault, folder=folder).set(agg['wikilinks'])
+        obsidian_folder_tags.labels(vault=vault, folder=folder).set(len(agg['tags']))
+
+    if top_linked_notes > 0:
+        backlinks = compute_backlinks(notes)
+        top = sorted(backlinks.items(), key=lambda kv: (-kv[1], kv[0]))[:top_linked_notes]
+        for note_name, count in top:
+            obsidian_top_linked_note_backlinks.labels(vault=vault, note_name=note_name).set(count)
 
 
 def setup_logging(log_level: str = "INFO") -> None:
@@ -389,15 +468,18 @@ def reset_metrics() -> None:
     metrics_data['vault_counts'].clear()
     metrics_data['word_frequencies'].clear()
     for metric in (
-        obsidian_note_total,
-        obsidian_word_count_total,
-        obsidian_tags_total,
         obsidian_notes_gauge,
         obsidian_words_gauge,
         obsidian_tags_gauge,
         obsidian_wikilinks_gauge,
-        obsidian_note_wikilinks,
         obsidian_word_frequency,
+        obsidian_folder_notes,
+        obsidian_folder_words,
+        obsidian_folder_wikilinks,
+        obsidian_folder_tags,
+        obsidian_note_length_words,
+        obsidian_note_outlinks,
+        obsidian_top_linked_note_backlinks,
     ):
         metric.clear()
 
@@ -451,10 +533,12 @@ def collect_vault_metrics(vault_path: str, exclude_files: Optional[set] = None) 
             basic_stats = extract_basic_stats(file_path)
             frontmatter_metadata = extract_frontmatter_metadata(file_path)
 
-            # Extract word frequencies from content (excluding frontmatter)
+            # Extract word frequencies and link targets from content (excluding frontmatter)
+            link_targets: List[str] = []
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     post = frontmatter.load(f)
+                link_targets = re.findall(r'\[\[([^\]]+)\]\]', post.content)
                 for word, count in extract_word_frequencies(post.content).items():
                     word_frequencies[word] += count
             except Exception as e:
@@ -467,6 +551,7 @@ def collect_vault_metrics(vault_path: str, exclude_files: Optional[set] = None) 
                 'word_count': basic_stats.get('word_count', 0),
                 'tags': tags,
                 'wikilinks_count': wikilinks_count,
+                'link_targets': link_targets,
             })
 
             logging.debug(f"Processed: {relative_path}")
@@ -479,10 +564,17 @@ def collect_vault_metrics(vault_path: str, exclude_files: Optional[set] = None) 
     return {'vault': vault_name, 'notes': notes, 'word_frequencies': dict(word_frequencies)}
 
 
-def parse_obsidian_vault_metrics_only(vault_path: str, exclude_files: Optional[set] = None) -> None:
+def parse_obsidian_vault_metrics_only(
+    vault_path: str,
+    exclude_files: Optional[set] = None,
+    top_linked_notes: int = DEFAULT_TOP_LINKED_NOTES,
+    max_folders: int = DEFAULT_MAX_FOLDERS,
+) -> None:
     """Parse all markdown files in the Obsidian vault and replace the metrics (no file output).
 
     Safe to call repeatedly: each call discards the previous snapshot and rebuilds it.
+    Exposes vault totals, folder aggregates, note length / outgoing link histograms, the
+    most-linked notes and the word frequencies; there are no per-note series.
     """
     scan = collect_vault_metrics(vault_path, exclude_files)
     vault_name = scan['vault']
@@ -492,8 +584,9 @@ def parse_obsidian_vault_metrics_only(vault_path: str, exclude_files: Optional[s
         for note in scan['notes']:
             update_metrics(
                 note['note_name'], vault_name, note['word_count'], note['tags'],
-                note['wikilinks_count'], file_path=note['file_path'],
+                note['wikilinks_count'],
             )
+        update_aggregate_metrics(vault_name, scan['notes'], top_linked_notes, max_folders)
         metrics_data['word_frequencies'][vault_name] = defaultdict(int, scan['word_frequencies'])
         update_word_frequency_metrics(vault_name, top_n=100)
 
@@ -503,6 +596,8 @@ def run_metrics_exporter(
     exclude_files: Optional[set] = None,
     refresh_interval: float = DEFAULT_REFRESH_INTERVAL,
     stop_event: Optional[threading.Event] = None,
+    top_linked_notes: int = DEFAULT_TOP_LINKED_NOTES,
+    max_folders: int = DEFAULT_MAX_FOLDERS,
 ) -> None:
     """Scan the vault, then keep re-scanning every ``refresh_interval`` seconds until stopped.
 
@@ -513,13 +608,16 @@ def run_metrics_exporter(
         raise ValueError("refresh interval must be greater than zero")
     stop_event = stop_event or threading.Event()
 
-    parse_obsidian_vault_metrics_only(vault_path, exclude_files)
+    def scan() -> None:
+        parse_obsidian_vault_metrics_only(vault_path, exclude_files, top_linked_notes, max_folders)
+
+    scan()
     logging.info("Metrics parsing completed successfully")
     logging.info(f"Metrics server is running; re-scanning every {refresh_interval:g}s. Press Ctrl+C to stop.")
 
     while not stop_event.wait(refresh_interval):
         try:
-            parse_obsidian_vault_metrics_only(vault_path, exclude_files)
+            scan()
         except Exception as e:
             logging.error(f"Metrics refresh failed, keeping previous values: {e}")
 
@@ -618,6 +716,8 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
                 'note_name': note_name,
                 'event_type': event_type
             }
+            # Numeric, so LogQL can unwrap it (the 'wikilinks' field is the comma-joined list)
+            all_metadata['wikilink_count'] = _note_tags_and_wikilinks(all_metadata)[1]
             
             # Create Loki labels
             labels = create_loki_labels(note_name, vault_name, all_metadata)
@@ -633,7 +733,7 @@ def parse_obsidian_vault(vault_path: str, output_file: str, exclude_files: set =
             
             # Update Prometheus metrics
             tags, wikilinks_count = _note_tags_and_wikilinks(all_metadata)
-            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags, wikilinks_count, file_path=relative_path)
+            update_metrics(note_name, vault_name, basic_stats.get('word_count', 0), tags, wikilinks_count)
             
             logging.debug(f"Processed: {relative_path}")
             
@@ -698,6 +798,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument('--refresh-interval', type=float,
                         help='Seconds between vault re-scans when the metrics server is running '
                              f'(default: config metrics_refresh_interval, else {DEFAULT_REFRESH_INTERVAL})')
+    parser.add_argument('--top-linked-notes', type=int,
+                        help='How many most-linked notes to expose as obsidian_top_linked_note_backlinks, 0 to disable '
+                             f'(default: config top_linked_notes, else {DEFAULT_TOP_LINKED_NOTES})')
+    parser.add_argument('--max-folders', type=int,
+                        help='Max top-level folders exposed individually; the rest are folded into "(other)" '
+                             f'(default: config max_folders, else {DEFAULT_MAX_FOLDERS})')
     parser.add_argument('--start-metrics-server', action='store_true', help='Start the Prometheus metrics server')
     return parser
 
@@ -718,6 +824,8 @@ def main(argv: Optional[List[str]] = None):
     log_level = _setting(args.log_level, config, 'log_level', DEFAULT_LOG_LEVEL)
     metrics_port = _setting(args.metrics_port, config, 'metrics_port', DEFAULT_METRICS_PORT)
     refresh_interval = _setting(args.refresh_interval, config, 'metrics_refresh_interval', DEFAULT_REFRESH_INTERVAL)
+    top_linked_notes = int(_setting(args.top_linked_notes, config, 'top_linked_notes', DEFAULT_TOP_LINKED_NOTES))
+    max_folders = int(_setting(args.max_folders, config, 'max_folders', DEFAULT_MAX_FOLDERS))
     start_metrics_server_flag = args.start_metrics_server or config.get('start_metrics_server', False)
     exclude_files = set(config.get('exclude_files', []))
 
@@ -732,7 +840,10 @@ def main(argv: Optional[List[str]] = None):
             start_metrics_server(int(metrics_port))
             logging.info(f"Metrics server started on port {metrics_port}")
             try:
-                run_metrics_exporter(vault_path, exclude_files, float(refresh_interval))
+                run_metrics_exporter(
+                    vault_path, exclude_files, float(refresh_interval),
+                    top_linked_notes=top_linked_notes, max_folders=max_folders,
+                )
             except KeyboardInterrupt:
                 logging.info("Shutting down...")
         else:

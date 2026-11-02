@@ -6,6 +6,9 @@ output_file: "./logs/obsidian_logs.json"
 log_level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
 metrics_port: 8080
 start_metrics_server: false  # Set to true to enable metrics collection
+# Low-series metrics tuning (nothing is exposed per note)
+top_linked_notes: 50  # most-linked notes exposed as obsidian_top_linked_note_backlinks (0 disables)
+max_folders: 50       # top-level folders exposed individually; the rest are folded into "(other)"
 grafana_password: "your_grafana_password_here"  # Replace with your actual Grafana password
 
 # Files to exclude from parsing (matched against note filename without extension)

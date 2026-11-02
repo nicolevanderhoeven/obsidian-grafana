@@ -960,7 +960,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Notes with zero backlinks (not referenced by any other note)",
+      "description": "Notes with no outgoing wikilinks (from the note links histogram; see the table for recently edited ones)",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1020,7 +1020,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(obsidian_note_wikilinks == 0)",
+          "expr": "sum(obsidian_note_outlinks_bucket{le=\"0.0\"})",
           "instant": true,
           "legendFormat": "Orphan notes",
           "queryType": "instant",
@@ -1033,10 +1033,10 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "loki",
+        "uid": "loki"
       },
-      "description": "Notes with zero wikilinks (not linking to any other note)",
+      "description": "Notes whose latest logged event has no outgoing wikilinks, from the Loki note events in the selected time range",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1095,8 +1095,8 @@
         "showHeader": true,
         "sortBy": [
           {
-            "desc": false,
-            "displayName": "Note"
+            "desc": true,
+            "displayName": "Last Modified"
           }
         ]
       },
@@ -1105,44 +1105,101 @@
         {
           "app": "grafana-assistant-app",
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "loki",
+            "uid": "loki"
           },
-          "expr": "obsidian_note_wikilinks == 0",
-          "instant": true,
+          "expr": "{job=\"obsidian-parser\"} | json | line_format \"{{.line}}\" | json | wikilinks = \"\" | modified_at != \"\"",
+          "instant": false,
           "legendFormat": "",
-          "queryType": "instant",
-          "range": false,
+          "queryType": "range",
+          "range": true,
           "refId": "A"
         }
       ],
-      "title": "Orphan Notes",
+      "title": "Orphan Notes (recently edited)",
       "transformations": [
         {
-          "id": "labelsToFields",
+          "id": "extractFields",
           "options": {
-            "mode": "columns"
+            "format": "json",
+            "source": "Line"
           }
         },
         {
-          "id": "merge",
-          "options": {}
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "note_name",
+                "file_path",
+                "modified_at"
+              ]
+            }
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "time",
+                "targetField": "modified_at"
+              }
+            ]
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "modified_at": {
+                "aggregations": [
+                  "max"
+                ],
+                "operation": "aggregate"
+              },
+              "note_name": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "file_path": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": true,
+                "field": "modified_at (max)"
+              }
+            ]
+          }
         },
         {
           "id": "organize",
           "options": {
-            "excludeByName": {
-              "Time": true,
-              "Value": true,
-              "__name__": true,
-              "instance": true,
-              "job": true,
-              "vault": true
+            "excludeByName": {},
+            "indexByName": {
+              "note_name": 0,
+              "file_path": 1,
+              "modified_at (max)": 2
             },
             "renameByName": {
+              "note_name": "Note",
               "file_path": "File Path",
-              "note_name": "Note"
+              "modified_at (max)": "Last Modified"
             }
+          }
+        },
+        {
+          "id": "limit",
+          "options": {
+            "limitField": 50
           }
         }
       ],
@@ -1217,7 +1274,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(obsidian_note_wikilinks == 0)",
+          "expr": "sum(obsidian_note_outlinks_bucket{le=\"0.0\"})",
           "instant": true,
           "legendFormat": "0 (no links)",
           "queryType": "instant",
@@ -1230,7 +1287,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(obsidian_note_wikilinks == 1)",
+          "expr": "sum(obsidian_note_outlinks_bucket{le=\"1.0\"}) - sum(obsidian_note_outlinks_bucket{le=\"0.0\"})",
           "instant": true,
           "legendFormat": "1",
           "queryType": "instant",
@@ -1243,7 +1300,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(obsidian_note_wikilinks == 2)",
+          "expr": "sum(obsidian_note_outlinks_bucket{le=\"2.0\"}) - sum(obsidian_note_outlinks_bucket{le=\"1.0\"})",
           "instant": true,
           "legendFormat": "2",
           "queryType": "instant",
@@ -1256,7 +1313,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(obsidian_note_wikilinks >= 3 and obsidian_note_wikilinks <= 5)",
+          "expr": "sum(obsidian_note_outlinks_bucket{le=\"5.0\"}) - sum(obsidian_note_outlinks_bucket{le=\"2.0\"})",
           "instant": true,
           "legendFormat": "3–5",
           "queryType": "instant",
@@ -1269,7 +1326,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(obsidian_note_wikilinks >= 6 and obsidian_note_wikilinks <= 10)",
+          "expr": "sum(obsidian_note_outlinks_bucket{le=\"10.0\"}) - sum(obsidian_note_outlinks_bucket{le=\"5.0\"})",
           "instant": true,
           "legendFormat": "6–10",
           "queryType": "instant",
@@ -1282,7 +1339,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(obsidian_note_wikilinks > 10)",
+          "expr": "sum(obsidian_note_outlinks_bucket{le=\"+Inf\"}) - sum(obsidian_note_outlinks_bucket{le=\"10.0\"})",
           "instant": true,
           "legendFormat": "11+",
           "queryType": "instant",
@@ -1298,7 +1355,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Notes with the highest number of backlinks (incoming references)",
+      "description": "Notes with the most backlinks (distinct notes linking to them), from obsidian_top_linked_note_backlinks",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -1330,7 +1387,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Total"
+              "options": "Backlinks"
             },
             "properties": [
               {
@@ -1382,7 +1439,7 @@
         "sortBy": [
           {
             "desc": true,
-            "displayName": "Total"
+            "displayName": "Backlinks"
           }
         ]
       },
@@ -1394,7 +1451,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "topk(50, obsidian_note_wikilinks{file_path!~\".*ttrpgs.*\"})",
+          "expr": "topk(10, obsidian_top_linked_note_backlinks)",
           "instant": true,
           "legendFormat": "",
           "queryType": "instant",
@@ -1402,7 +1459,7 @@
           "refId": "A"
         }
       ],
-      "title": "Top 10 Notes with the Most Links",
+      "title": "Top 10 Most Linked Notes",
       "transformations": [
         {
           "id": "labelsToFields",
@@ -1420,7 +1477,6 @@
             "excludeByName": {
               "Time": true,
               "__name__": true,
-              "file_path": true,
               "instance": true,
               "job": true,
               "vault": true
@@ -1430,7 +1486,7 @@
               "note_name": 0
             },
             "renameByName": {
-              "Value": "Total",
+              "Value": "Backlinks",
               "note_name": "Note"
             }
           }
