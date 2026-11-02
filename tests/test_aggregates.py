@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 from prometheus_client import REGISTRY, generate_latest
 
-from obsidian_grafana import parse_notes
 from obsidian_grafana.parse_notes import parse_obsidian_vault_metrics_only, reset_metrics
 
 ROOT = Path(__file__).resolve().parent.parent

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from collections import defaultdict
 import frontmatter
-from prometheus_client import REGISTRY, CollectorRegistry, Counter, Gauge, Histogram, start_http_server as prometheus_start_http_server
+from prometheus_client import REGISTRY, CollectorRegistry, Gauge, Histogram, start_http_server as prometheus_start_http_server
 import re
 
 # Defaults shared by the CLI and the config file (config.yaml overrides, CLI overrides both)
