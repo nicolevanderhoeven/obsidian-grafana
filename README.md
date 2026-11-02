@@ -445,6 +445,43 @@ Five pre-configured dashboards are automatically provisioned:
 - **Loki**: For log-based queries and event tracking
 - **Prometheus**: For real-time metrics and current state
 
+## Grafana Cloud forwarding (optional)
+
+Off by default. When enabled, the same data the local dashboards use is also sent to your Grafana Cloud stack, so Cloud works as a backup and every dashboard works there. Local storage (Loki, Prometheus) and the local dashboards are unchanged.
+
+**What is sent (read this first).** Full detail: note titles, relative file paths (so folder names), tags, all frontmatter keys and values, wikilink targets, and the `obsidian_word_frequency` metric (the vault's top 100 body words). No note body text, excerpts or headings are sent. **Not sent:** the parser's own log (`logs/obsidian_parser.log`, `job=obsidian-cron`), which can contain absolute vault paths and stays local.
+
+**How it works.** A second Alloy container, `alloy-cloud` (compose profile `cloud`, config in `alloy/cloud.alloy`), tails `logs/obsidian_logs.json` into Grafana Cloud Loki with the same label extraction as the local pipeline, and scrapes the exporter's `/metrics` and remote-writes them to Grafana Cloud Metrics. It has its own read positions (`alloy_cloud_data` volume), so on first start it replays the whole existing log file; Grafana Cloud rejects log lines older than its ingestion window (about a week by default), so older history only reaches Cloud if you ingest it some other way.
+
+**Enable it.**
+
+1. In Grafana Cloud, create an access policy token with the `metrics:write` and `logs:write` scopes.
+2. Add to `.env` (see `.env.example`; the Prometheus and Loki URLs and user IDs are on your stack's Details page):
+
+   ```bash
+   GRAFANA_CLOUD_PROMETHEUS_URL="https://prometheus-prod-XX-prod-REGION.grafana.net/api/prom/push"
+   GRAFANA_CLOUD_PROMETHEUS_USER="123456"
+   GRAFANA_CLOUD_LOKI_URL="https://logs-prod-XXX.grafana.net/loki/api/v1/push"
+   GRAFANA_CLOUD_LOKI_USER="123456"
+   GRAFANA_CLOUD_TOKEN="glc_..."
+   ```
+
+3. Start it: `docker compose --profile cloud up -d` (plain `docker compose up -d` keeps working without these variables and never starts `alloy-cloud`). If a variable is missing, `docker compose logs alloy-cloud` shows which one. To stop forwarding, run `docker compose stop alloy-cloud` (or leave the profile off).
+
+`.env` is gitignored; never commit the token. Note that `setup.sh` runs a plain `docker compose up -d`, so re-run the `--profile cloud` command after it (or set `COMPOSE_PROFILES=cloud` in `.env`).
+
+**Dashboards in Grafana Cloud.** Cloud's built-in datasources have different uids from the local ones (`grafanacloud-logs` and `grafanacloud-prom` instead of `loki` and `prometheus`). `scripts/import-cloud-dashboards.sh` rewrites those references on the fly and imports all five dashboards through the Grafana API, without touching the files in `grafana/dashboards/`:
+
+```bash
+export GRAFANA_CLOUD_STACK_URL="https://yourstack.grafana.net"
+export GRAFANA_CLOUD_API_TOKEN="glsa_..."   # service account token with the Editor role (not the write token above)
+scripts/import-cloud-dashboards.sh           # --dry-run DIR writes the rewritten JSON to DIR instead
+```
+
+Install the `volkovlabs-echarts-panel` and `marcusolsson-calendar-panel` plugins in your Cloud stack first (the Word Cloud and Timeseries dashboards need them). Set `CLOUD_LOKI_UID` / `CLOUD_PROMETHEUS_UID` if your datasource uids differ. Note that the exporter runs in a container, so in Cloud the metrics carry `vault="vault"` (the mount name), exactly as in the local Prometheus.
+
+**Removing data from Cloud.** Metrics series expire on their own after you stop sending. Logs can be deleted by a Grafana Cloud admin on request, or left to expire with your stack's log retention.
+
 ## Troubleshooting
 
 ### Parser Issues

@@ -32,6 +32,33 @@ services:
     networks:
       - obsidian-monitoring
 
+  # Optional Grafana Cloud forwarding, off by default. Enable with:
+  #   docker compose --profile cloud up -d
+  # after setting the GRAFANA_CLOUD_* variables in .env (see .env.example / README).
+  # (They default to empty so plain `docker compose` works without them; Alloy refuses to
+  # start and logs which setting is missing if you enable the profile without them.)
+  # Reads the same logs and scrapes the same exporter as the local stack; local storage
+  # and dashboards are unchanged.
+  alloy-cloud:
+    image: grafana/alloy:v1.21.3
+    container_name: obsidian-alloy-cloud
+    profiles: ["cloud"]
+    environment:
+      - GRAFANA_CLOUD_LOKI_URL=${GRAFANA_CLOUD_LOKI_URL:-}
+      - GRAFANA_CLOUD_LOKI_USER=${GRAFANA_CLOUD_LOKI_USER:-}
+      - GRAFANA_CLOUD_PROMETHEUS_URL=${GRAFANA_CLOUD_PROMETHEUS_URL:-}
+      - GRAFANA_CLOUD_PROMETHEUS_USER=${GRAFANA_CLOUD_PROMETHEUS_USER:-}
+      - GRAFANA_CLOUD_TOKEN=${GRAFANA_CLOUD_TOKEN:-}
+    volumes:
+      - ./alloy/cloud.alloy:/etc/alloy/config.alloy:ro
+      - ./logs:/logs:ro
+      - alloy_cloud_data:/var/lib/alloy/data
+    command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data
+    depends_on:
+      - metrics-exporter
+    networks:
+      - obsidian-monitoring
+
   metrics-exporter:
     build: .
     container_name: obsidian-metrics-exporter
@@ -88,6 +115,7 @@ volumes:
   loki_data:
   grafana_data:
   alloy_data:
+  alloy_cloud_data:
   prometheus_data:
 
 networks:
