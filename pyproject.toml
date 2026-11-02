@@ -1,0 +1,8 @@
+# Tooling configuration only; runtime dependencies live in requirements.txt
+# (and requirements-dev.txt for tests/lint).
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Repo root makes `obsidian_grafana` importable; the legacy backfill script is
+# tested but not packaged, so its folder is added too.
+pythonpath = [".", "scripts/legacy"]

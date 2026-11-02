@@ -1,11 +1,11 @@
-"""Tests for export_vault_index.py"""
+"""Tests for obsidian_grafana/export_vault_index.py"""
 
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from export_vault_index import (
+from obsidian_grafana.export_vault_index import (
     scan_note,
     scan_vault,
     compute_backlinks,

@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (pyflakes)
+        run: python -m pyflakes obsidian_grafana tests scripts
+
+      - name: Unit tests
+        run: python -m pytest
+
+      - name: Shell syntax
+        run: |
+          for f in setup.sh scripts/*.sh hooks/pre-commit; do bash -n "$f"; done
+
+      - name: Validate dashboard JSON
+        run: |
+          for f in grafana/dashboards/*.json; do jq empty "$f"; done
+
+      - name: Validate docker compose file
+        env:
+          VAULT_PATH: /tmp/vault
+          GRAFANA_PASSWORD: ci-placeholder
+        run: docker compose config --quiet

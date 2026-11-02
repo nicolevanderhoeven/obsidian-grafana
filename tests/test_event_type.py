@@ -1,13 +1,9 @@
-"""Tests for event_type functionality in parse_notes.py and backfill_event_type.py"""
+"""Tests for event_type functionality in obsidian_grafana/parse_notes.py and scripts/legacy/backfill_event_type.py"""
 
 import json
-import tempfile
-from datetime import datetime
 from pathlib import Path
 
-import pytest
-
-from parse_notes import load_known_files, save_known_files
+from obsidian_grafana.parse_notes import load_known_files, save_known_files
 from backfill_event_type import (
     add_event_type,
     extract_file_path,

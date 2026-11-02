@@ -6,7 +6,7 @@ A comprehensive monitoring and analytics system for Obsidian vaults. Transform y
 - 📊 Tracks note statistics (word count, line count, file size) over time
 - 🏷️ Analyzes tags, frontmatter fields, and metadata patterns
 - 🔗 Visualizes note relationships through wikilinks
-- 📈 Provides real-time metrics and historical trend analysis
+- 📈 Provides current-state metrics (refreshed every few minutes) and historical trend analysis
 - ⚡ Uses event-based logging to efficiently track only modified notes
 
 **Why it's useful:**
@@ -27,7 +27,7 @@ graph TB
     end
     
     subgraph "Data Collection"
-        Parser["📝 Python Parser<br/>(parse_notes.py)<br/>• Extracts metadata<br/>• Event-based logging<br/>• Runs every 5 min"]
+        Parser["📝 Python Parser<br/>(obsidian_grafana/parse_notes.py)<br/>• Extracts metadata<br/>• Event-based logging<br/>• Runs every 5 min"]
         Cron["⏰ Cron Job<br/>(setup.sh)"]
     end
     
@@ -38,18 +38,19 @@ graph TB
     end
     
     subgraph "Metrics Path (Real-time State)"
-        MetricsExp["📈 Metrics Exporter<br/>:8080/metrics<br/>• HTTP endpoint<br/>• Prometheus format"]
-        Prometheus[("📉 Prometheus<br/>:9090<br/>• Metrics storage<br/>• Scrapes every 15s")]
+        MetricsExp["📈 Metrics Exporter<br/>:8080/metrics<br/>• Re-scans the vault every 5 min<br/>• Prometheus format"]
+        Prometheus[("📉 Prometheus<br/>:9090<br/>• Metrics storage<br/>• Scrapes every 30s")]
     end
     
     subgraph "Visualization"
-        Grafana["📺 Grafana<br/>:3000<br/>• 4 Dashboards<br/>• Interactive filtering<br/>• Dual datasources"]
+        Grafana["📺 Grafana<br/>:3000<br/>• 5 Dashboards<br/>• Interactive filtering<br/>• Dual datasources"]
         
         subgraph "Dashboards"
             D1["📋 Overview"]
             D2["📈 Time Series"]
             D3["🔗 Relationships"]
             D4["🏷️ Types"]
+            D5["☁️ Word Cloud"]
         end
     end
     
@@ -57,7 +58,7 @@ graph TB
     Cron -.->|Triggers every 5m| Parser
     
     Parser -->|Write events| LogFile
-    Parser -->|Expose metrics| MetricsExp
+    Vault -->|Re-scanned every 5 min| MetricsExp
     
     LogFile -->|Tail & parse| Alloy
     Alloy -->|Push logs| Loki
@@ -71,6 +72,7 @@ graph TB
     Grafana --> D2
     Grafana --> D3
     Grafana --> D4
+    Grafana --> D5
     
     style Vault fill:#e1f5ff
     style Parser fill:#fff4e6
@@ -93,11 +95,11 @@ graph TB
 6. **Grafana** queries Loki using LogQL to display historical trends and relationships
 
 **Path 2: Metrics-Based (Current State)**
-1. **Metrics Exporter** service runs the parser in metrics-only mode
-2. Parser scans the entire vault and updates **Prometheus metrics**
+1. **Metrics Exporter** service runs the parser in metrics-only mode (a separate container process, independent of the cron job)
+2. It scans the entire vault, then **re-scans on an interval** (default 300 seconds, `metrics_refresh_interval` in `config.yaml` or `--refresh-interval`), replacing its metrics with the fresh snapshot so renamed, deleted and edited notes are reflected
 3. Metrics are exposed via HTTP endpoint at `:8080/metrics`
-4. **Prometheus** scrapes metrics every 15 seconds
-5. **Grafana** queries Prometheus using PromQL for real-time statistics
+4. **Prometheus** scrapes metrics every 30 seconds
+5. **Grafana** queries Prometheus using PromQL for current-state statistics (at most one refresh interval behind your vault)
 
 ### Components
 
@@ -105,18 +107,20 @@ graph TB
 |-----------|---------|------|------------|
 | Python Parser | Metadata extraction and metrics generation | N/A | Python 3, frontmatter, PyYAML |
 | Cron Job | Scheduled execution (every 5 minutes) | N/A | System cron |
-| Alloy | Log collection and forwarding | 12345 | Grafana Alloy |
-| Loki | Log storage and querying | 3100 | Grafana Loki 3.0 |
-| Prometheus | Metrics storage and TSDB | 9090 | Prometheus |
+| Alloy | Log collection and forwarding | 12345 | Grafana Alloy v1.21.3 |
+| Loki | Log storage and querying | 3100 | Grafana Loki 3.7.9 (TSDB index, schema v13) |
+| Prometheus | Metrics storage and TSDB | 9090 | Prometheus v3.15.1 |
 | Metrics Exporter | Prometheus metrics endpoint | 8080 | Python + prometheus_client |
-| Grafana | Visualization and dashboards | 3000 | Grafana 11.6 |
-| Grafana Assistant | AI assistant plugin (manually installed) | — | grafana-assistant-app v1.1.52 |
+| Grafana | Visualization and dashboards | 3000 | Grafana 13.3.0 |
+| Grafana plugins | Panels and AI assistant (installed on start) | — | grafana-assistant-app 2.0.96, marcusolsson-calendar-panel 4.2.4, volkovlabs-echarts-panel 7.2.5 |
+
+All published ports are bound to `127.0.0.1` (this machine only). All image and plugin versions are pinned in `docker-compose.yml`.
 
 **Key Features:**
 - 🔄 **Event-Based Logging**: Only modified notes are logged, reducing storage by 90%+
 - 📊 **Dual Data Sources**: Combines historical logs (Loki) with real-time metrics (Prometheus)
 - 🏷️ **Label-Based Indexing**: Frontmatter fields become Loki labels for fast filtering
-- 🐳 **Containerized**: All services run in Docker with docker-compose
+- 🐳 **Containerized**: All services run in Docker with Docker Compose
 - ⚡ **Efficient**: Incremental parsing with timestamp tracking
 
 ## Features
@@ -130,28 +134,30 @@ graph TB
 - **Event-Based Logging**: Only logs notes modified since last run, reducing storage and processing overhead
 
 ### Monitoring & Metrics
-- **Prometheus Metrics**: Real-time metrics exposed via HTTP endpoint
+- **Prometheus Metrics**: Current-state metrics exposed via HTTP endpoint, refreshed on an interval
   - Total note count per vault
   - Total word count across all notes
   - Unique tag count
-  - Total wikilink count
+  - Total wikilink count (and wikilinks per note)
+  - Top 100 word frequencies (powers the Word Cloud dashboard)
 - **Automatic Log Rotation**: Rotates logs when they exceed 50MB to manage disk space
 - **Scheduled Parsing**: Automated cron job runs every 5 minutes to capture changes
 
 ### Visualization
-Four pre-configured Grafana dashboards:
+Five pre-configured Grafana dashboards:
 
 1. **Overview Dashboard**: High-level vault statistics, processing rate, and recent activity
 2. **Time Series Dashboard**: Individual note metrics tracked over time with filtering
 3. **Relationships Dashboard**: Wikilink network analysis and backlink visualization
 4. **Types Dashboard**: Distribution and patterns of frontmatter types (e.g., NPC, PC, audio)
+5. **Word Cloud Dashboard**: The most frequent words across the vault (code blocks, URLs and common stopwords are filtered out)
 
 **Interactive Filtering**: All dashboards support filtering by vault, tags, categories, note names, and frontmatter fields
 
 ### Technical Features
-- **Containerized Deployment**: All services run in Docker with docker-compose
+- **Containerized Deployment**: All services run in Docker with Docker Compose
 - **YAML Configuration**: Simple config file for easy customization
-- **Dual Data Paths**: Combines log-based event tracking with real-time metrics
+- **Dual Data Paths**: Combines log-based event tracking with current-state metrics
 - **Label-Based Indexing**: Frontmatter fields become Loki labels for efficient querying
 - **Hidden File Exclusion**: Automatically skips hidden files and `.` directories
 
@@ -173,28 +179,23 @@ output_file: "./logs/obsidian_logs.json"
 log_level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
 metrics_port: 8080
 start_metrics_server: false  # Set to true to enable metrics collection
-grafana_password: "your_grafana_password_here"  # Replace with your actual Grafana password
+grafana_password: "your_grafana_password_here"  # Choose a password; there is NO default
 ```
 
 **Important**: The `config.yaml` file contains sensitive information (like your Grafana password) and is excluded from version control. Always use the `config.yaml.example` file as a template.
 
-Also create a `.env` file for Docker Compose (so `docker compose` commands work without needing `setup.sh`):
+`config.yaml` (in the repository root) is the single place to set your vault path and Grafana password. `setup.sh` reads both values from it, exports them to Docker Compose, and mirrors them into a generated, git-ignored `.env` so plain `docker compose` commands (`down`, `logs`, `ps`) keep working. An `.env` you wrote yourself is never overwritten; if you run `docker compose` without `setup.sh`, copy `.env.example` to `.env` and set `VAULT_PATH` and `GRAFANA_PASSWORD` there. Compose refuses to start if either is missing.
 
-```bash
-cp .env.example .env
-```
+### 2. Prerequisites
 
-Then edit `.env` and set your vault path:
+`setup.sh` checks for these and stops with a clear message if one is missing:
 
-```bash
-VAULT_PATH="/path/to/your/obsidian/vault"
-```
+- Docker with the Compose v2 plugin (`docker compose`; the old `docker-compose` v1 binary is not supported)
+- `python3` with the `venv` module (setup creates `.venv/` and installs `requirements.txt` into it; cron uses that virtualenv)
+- `crontab`
+- `jq` (only for the dashboard export hook and CI)
 
-### 2. Install Python Dependencies
-
-```bash
-pip3 install -r requirements.txt
-```
+For development and tests: `pip install -r requirements-dev.txt`, then `python -m pytest`.
 
 ### 3. Start the System
 
@@ -205,13 +206,13 @@ Run the setup script to start everything:
 ```
 
 This will:
-- Read the Grafana password from `config.yaml`
-- Start all Docker containers
-- Set up automated parsing every 5 minutes
-- Display access URLs and credentials
+- Check dependencies, create `.venv/` and install the Python requirements
+- Read the vault path and Grafana password from `config.yaml` (and refuse the placeholder or an empty password)
+- Create `logs/` and start all Docker containers
+- Install (or refresh) the cron jobs that run the parser and vault index every 5 minutes. Re-running `setup.sh` replaces its own entries instead of duplicating them, and also replaces entries from older versions of this script
 
-Services available at:
-- **Grafana** at http://localhost:3000 (admin/your_password)
+Services available at (localhost only; nothing is published on your network):
+- **Grafana** at http://localhost:3000 (user `admin`, password = `grafana_password` from `config.yaml`)
 - **Loki** at http://localhost:3100
 - **Alloy** at http://localhost:12345
 - **Prometheus** at http://localhost:9090
@@ -221,38 +222,22 @@ The parser will run every 5 minutes automatically.
 
 ### Grafana Assistant Plugin
 
-The [Grafana Assistant](https://grafana.com/grafana/plugins/grafana-assistant-app/) plugin is installed manually into the Grafana Docker volume. Plugin ZIPs are stored locally in `grafana/plugins/` (gitignored).
+The [Grafana Assistant](https://grafana.com/grafana/plugins/grafana-assistant-app/) plugin (`grafana-assistant-app` **2.0.96**) is installed automatically, like the two panel plugins, through `GF_PLUGINS_PREINSTALL_SYNC` in `docker-compose.yml`. The plugin is downloaded from grafana.com into the `grafana_data` volume the first time Grafana starts, so it survives container recreation (`docker compose up -d --force-recreate`, image updates). Nothing needs to be unzipped by hand and `grafana/plugins/` is no longer used.
 
-To install or update the plugin:
-
-```bash
-# Remove the old version from the Docker volume
-docker run --rm -v obsidian-grafana_grafana_data:/data alpine rm -rf /data/plugins/grafana-assistant-app
-
-# Install the new version from a ZIP
-docker run --rm \
-  -v obsidian-grafana_grafana_data:/data \
-  -v ./grafana/plugins/YOUR_PLUGIN.zip:/tmp/plugin.zip \
-  alpine sh -c "apk add --no-cache unzip && unzip /tmp/plugin.zip -d /data/plugins/"
-
-# Restart Grafana to load the new plugin
-docker restart obsidian-grafana
-```
-
-**Current version:** grafana-assistant-app v1.1.52
+Assistant 2.x requires **Grafana 13.1 or newer**, which is why Grafana is pinned to 13.3.0. To change a plugin version, edit the `@version` in `GF_PLUGINS_PREINSTALL_SYNC` and run `docker compose up -d grafana`. If you previously installed Assistant 1.x by unzipping it into the volume, the pinned version is installed over it on the next start; if Administration → Plugins still shows 1.x afterwards, remove the old copy (`docker run --rm -v obsidian-grafana_grafana_data:/data alpine rm -rf /data/plugins/grafana-assistant-app`, adjusting the volume prefix to your Compose project name) and start Grafana again. Grafana needs internet access to grafana.com the first time it starts with a new plugin version (a failed download stops startup); afterwards it starts offline.
 
 ### 4. Test the System
 
 Run the parser manually to generate initial data:
 
 ```bash
-python3 parse_notes.py
+.venv/bin/python -m obsidian_grafana.parse_notes
 ```
 
 Check that logs are being generated:
 
 ```bash
-tail -f /tmp/obsidian_logs.json
+tail -f ./logs/obsidian_logs.json
 ```
 
 ### 5. View Dashboards
@@ -263,6 +248,7 @@ Open Grafana at http://localhost:3000 and explore the pre-configured dashboards:
 - **Time Series**: Word count, line count, and file size trends over time
 - **Note Relationships**: Wikilinks and backlink analysis
 - **Frontmatter Types**: Distribution and usage patterns of different frontmatter types
+- **Word Cloud**: Most frequent words in the vault
 
 ## Saving Dashboard Changes
 
@@ -307,25 +293,27 @@ The script accepts environment variables for non-default setups:
 |---|---|---|
 | `GRAFANA_URL` | `http://localhost:3000` | Grafana base URL |
 | `GRAFANA_USER` | `admin` | API username |
-| `GRAFANA_PASSWORD` | `admin` | API password (falls back to `GF_SECURITY_ADMIN_PASSWORD`) |
+| `GRAFANA_PASSWORD` | `grafana_password` from `config.yaml` | API password (required; there is no default) |
 
 ## Manual Usage
 
 ### Run Parser Manually
 
 ```bash
-# Using config file
-python3 parse_notes.py
+# Using config file (use the virtualenv that setup.sh created, or any environment with requirements.txt installed)
+.venv/bin/python -m obsidian_grafana.parse_notes
 
 # Override vault path
-python3 parse_notes.py --vault-path /path/to/vault
+.venv/bin/python -m obsidian_grafana.parse_notes --vault-path /path/to/vault
 
 # Override output file
-python3 parse_notes.py --output /tmp/custom_logs.json
+.venv/bin/python -m obsidian_grafana.parse_notes --output /tmp/custom_logs.json
 
-# Set log level
-python3 parse_notes.py --log-level DEBUG
+# Set log level (command line > config.yaml > INFO)
+.venv/bin/python -m obsidian_grafana.parse_notes --log-level DEBUG
 ```
+
+Command-line options override `config.yaml`, which overrides the built-in defaults (`log_level: INFO`, `metrics_port: 8080`, `output_file: ./logs/obsidian_logs.json`).
 
 ### View Alloy Status
 
@@ -333,11 +321,38 @@ Visit http://localhost:12345 to see Alloy's status and configuration.
 
 ## Dashboard Queries
 
-The dashboards use LogQL queries to filter and aggregate data. See `.cursor/plan.md` for detailed query examples and implementation details.
+The dashboards provisioned from `grafana/dashboards/` use LogQL (Loki) for event history and PromQL (Prometheus) for current state. They reference their datasources by the fixed uids `loki` and `prometheus`, which `grafana/provisioning/datasources/` pins, so they work on any fresh install. Representative queries (copy them into **Explore** to experiment):
+
+```logql
+# Notes created / modified in the last hour (Overview)
+sum(count_over_time({job="obsidian-parser", event_type="created"}[1h]))
+sum(count_over_time({job="obsidian-parser", event_type="modified"}[1h]))
+
+# Recently updated notes: each log line is the full entry, whose "line" field holds the note metadata
+{job="obsidian-parser"} | json | line_format "{{.line}}" | json | modified_at != ""
+
+# Frontmatter type distribution (Types); frontmatter_* are also Loki labels
+sum by (frontmatter_type) (count_over_time({job="obsidian-parser"} | json | frontmatter_type != "" [7d]))
+sum by (frontmatter_type, vault) (count_over_time({job="obsidian-parser"} | json | frontmatter_type != "" [7d]))
+
+# Notes containing wikilinks (Relationships)
+count_over_time({job="obsidian-parser"} |= "wikilinks" [$__range])
+```
+
+```promql
+# Current-state metrics from the exporter (Overview, Word Cloud)
+obsidian_notes_count
+obsidian_words_total
+obsidian_wikilinks_total / obsidian_notes_count   # links per note
+count(obsidian_note_wikilinks == 0)               # orphan notes
+topk(100, obsidian_word_frequency)                # word cloud
+```
+
+Known limitation: the Time Series dashboard's queries (`| json | unwrap word_count`) expect the note metadata at the top level of the log line, but the log line stores it inside the entry's `line` field (as the Overview queries above assume), so those four panels currently show no data.
 
 ## Configuration
 
-### Python Parser (`parse_notes.py`)
+### Python Parser (`obsidian_grafana/parse_notes.py`)
 
 The parser extracts comprehensive metadata from each note:
 
@@ -364,8 +379,10 @@ vault_path: "/path/to/vault"        # Required: Path to Obsidian vault
 output_file: "./logs/obsidian_logs.json"  # Where to write log entries
 log_level: "INFO"                   # DEBUG, INFO, WARNING, ERROR
 metrics_port: 8080                  # Prometheus metrics endpoint port
+metrics_refresh_interval: 300       # Seconds between vault re-scans in the metrics exporter
 start_metrics_server: false         # Enable/disable metrics server
-grafana_password: "admin"           # Grafana admin password
+grafana_password: "choose-one"      # Grafana admin password (required, no default)
+index_output_path: "/path/to/index" # Where export_vault_index.py writes (OpenClaw integration)
 
 # Files to exclude from parsing (matched against note filename without extension)
 exclude_files:
@@ -383,7 +400,7 @@ Alloy serves as the log collector and forwarder:
 - `obsidian_parser.log`: Parser execution logs (for debugging)
 
 **Processing Pipeline:**
-1. Reads log files via `loki.source.file` (positions persisted in `alloy_data` volume)
+1. Discovers the files with `local.file_match` (so files that don't exist yet at startup are picked up once they appear) and reads them via `loki.source.file` (positions persisted in `alloy_data` volume)
 2. Parses JSON and extracts labels via `loki.process`
 3. Parses the entry timestamp using RFC3339Nano format (preserves original event time)
 4. Converts frontmatter fields to Loki labels (vault, job, tags, frontmatter_*)
@@ -391,13 +408,13 @@ Alloy serves as the log collector and forwarder:
 
 **Label Extraction:**
 - `vault`: Vault name (from vault path)
-- `job`: Always `obsidian-parser`
+- `job`: `obsidian-parser` for `obsidian_logs.json` entries; `obsidian-cron` for lines from `obsidian_parser.log`
 - `tags`: Comma-separated frontmatter tags
 - `frontmatter_*`: All frontmatter fields as individual labels
 
 ### Grafana Dashboards
 
-Four pre-configured dashboards are automatically provisioned:
+Five pre-configured dashboards are automatically provisioned:
 
 1. **Overview (`overview.json`)**: 
    - Total notes count
@@ -420,6 +437,10 @@ Four pre-configured dashboards are automatically provisioned:
    - Type usage patterns over time
    - Pie charts and time series by type
 
+5. **Word Cloud (`wordcloud.json`)**:
+   - Top words across the vault (`obsidian_word_frequency` from Prometheus)
+   - Uses the `volkovlabs-echarts-panel` plugin
+
 **Data Sources:**
 - **Loki**: For log-based queries and event tracking
 - **Prometheus**: For real-time metrics and current state
@@ -433,7 +454,7 @@ Four pre-configured dashboards are automatically provisioned:
 tail -f ./logs/obsidian_parser.log
 
 # Run with debug logging
-python3 parse_notes.py --log-level DEBUG
+.venv/bin/python -m obsidian_grafana.parse_notes --log-level DEBUG
 
 # Verify JSON logs are being created
 tail -f ./logs/obsidian_logs.json
@@ -444,32 +465,32 @@ cat ./logs/.last_run
 
 **Common Issues:**
 - **"Vault path does not exist"**: Ensure `vault_path` in `config.yaml` is correct
-- **No logs generated**: Check file permissions on the `logs/` directory
+- **No logs generated**: Check file permissions on the `logs/` directory (it is created by `setup.sh`, and tracked via `logs/.gitkeep`; if Docker created it first it may be owned by root)
 - **Frontmatter not parsing**: Ensure YAML frontmatter is valid and uses `---` delimiters
 
 ### Docker Issues
 
 ```bash
 # Check container status
-docker-compose ps
+docker compose ps
 
 # View all logs
-docker-compose logs -f
+docker compose logs -f
 
 # View specific service logs
-docker-compose logs -f grafana
-docker-compose logs -f loki
-docker-compose logs -f alloy
-docker-compose logs -f metrics-exporter
+docker compose logs -f grafana
+docker compose logs -f loki
+docker compose logs -f alloy
+docker compose logs -f metrics-exporter
 
 # Restart specific service
-docker-compose restart grafana
+docker compose restart grafana
 
 # Restart all services
-docker-compose restart
+docker compose restart
 
 # Rebuild after code changes
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ### Alloy Issues
@@ -505,9 +526,11 @@ curl -G http://localhost:3100/loki/api/v1/query \
   - Verify Loki has data: use Explore view with query `{job="obsidian-parser"}`
   - Check time range in dashboard (default is last 6 hours)
   - Ensure parser has run at least once
-- **Authentication issues**: Check `GRAFANA_PASSWORD` in docker-compose or use default `admin/admin`
+- **Authentication issues**: Log in as `admin` with `grafana_password` from `config.yaml`. Grafana only reads the admin password when its database is first created, so changing it in `config.yaml` later does not change an existing install; change it in the Grafana UI (profile → Change password). There is no default password.
 
 ## Backfill and Re-ingestion
+
+> **Legacy tool.** `scripts/legacy/backfill_event_type.py` was a one-time migration for logs written before `event_type` existed. New installs don't need it. It is kept (with its tests) for anyone still holding old logs.
 
 If you need to backfill `event_type` (created/modified) to existing log entries or re-ingest data into Loki, follow these steps.
 
@@ -526,10 +549,10 @@ The backfill script adds `event_type` labels to distinguish between newly create
 crontab -l > /tmp/cron_backup && crontab -r
 
 # 2. Run the backfill script (creates backup automatically)
-python3 backfill_event_type.py
+python3 scripts/legacy/backfill_event_type.py
 
 # Or do a dry run first to see what would change
-python3 backfill_event_type.py --dry-run
+python3 scripts/legacy/backfill_event_type.py --dry-run
 
 # 3. Verify the backfill succeeded
 head -5 ./logs/obsidian_logs.json  # Check sample entries have event_type
@@ -577,22 +600,35 @@ crontab /tmp/cron_backup
 
 ```
 obsidian-grafana/
-├── parse_notes.py                      # Main Python parser script
-├── backfill_event_type.py              # One-time migration: adds event_type to existing logs
-├── requirements.txt                    # Python dependencies (pyyaml, frontmatter, prometheus-client)
+├── obsidian_grafana/                   # Python package
+│   ├── parse_notes.py                  # Parser + Prometheus metrics exporter
+│   └── export_vault_index.py           # OpenClaw vault index generator
+├── tests/                              # pytest suite (event_type, vault index, word frequency, exporter)
+│   ├── test_event_type.py
+│   ├── test_exporter.py
+│   ├── test_vault_index.py
+│   └── test_word_frequency.py
+├── pyproject.toml                      # pytest configuration
+├── requirements.txt                    # Runtime Python dependencies (pinned)
+├── requirements-dev.txt                # Adds pytest and pyflakes
 ├── config.yaml                         # User configuration (git-ignored)
 ├── config.yaml.example                 # Configuration template
-├── setup.sh                            # Setup script (starts Docker + cron)
-├── docker-compose.yml                  # Docker stack orchestration
-├── Dockerfile                          # Dockerfile for metrics exporter service
+├── .env.example                        # Docker Compose variables (setup.sh generates .env from config.yaml)
+├── setup.sh                            # Setup script (venv + Docker + cron)
+├── docker-compose.yml                  # Docker stack orchestration (pinned versions, localhost ports)
+├── Dockerfile                          # Image for the metrics exporter service
+├── .dockerignore
 ├── README.md                           # Documentation (this file)
-├── test_event_type.py                  # Tests for event_type functionality
-├── test_vault_index.py                 # Tests for vault index export
+├── .github/workflows/ci.yml            # CI: pyflakes, pytest, dashboard JSON + compose validation
 │
 ├── scripts/
-│   └── export-dashboards.sh           # Export Grafana dashboards to JSON files
+│   ├── cron-parse.sh                   # Cron entry point for the parser (+ heartbeat log line)
+│   ├── cron-index.sh                   # Cron entry point for the vault index
+│   ├── export-dashboards.sh            # Export Grafana dashboards to JSON files
+│   └── legacy/
+│       └── backfill_event_type.py      # One-time migration: adds event_type to existing logs
 ├── hooks/
-│   └── pre-commit                     # Auto-exports dashboards before commits
+│   └── pre-commit                      # Auto-exports dashboards before commits
 │
 ├── alloy/
 │   └── config.alloy                    # Alloy log collection configuration
@@ -602,17 +638,19 @@ obsidian-grafana/
 │   │   ├── dashboards/
 │   │   │   └── dashboards.yml          # Dashboard provisioning config
 │   │   └── datasources/
-│   │       ├── loki.yml                # Loki datasource configuration
-│   │       └── prometheus.yml          # Prometheus datasource configuration
+│   │       ├── loki.yml                # Loki datasource (uid: loki)
+│   │       └── prometheus.yml          # Prometheus datasource (uid: prometheus)
 │   └── dashboards/
 │       ├── overview.json               # Overview dashboard
 │       ├── timeseries.json             # Time series dashboard
 │       ├── relationships.json          # Relationships dashboard
-│       └── types.json                  # Frontmatter types dashboard
+│       ├── types.json                  # Frontmatter types dashboard
+│       └── wordcloud.json              # Word cloud dashboard
 │
-├── logs/                               # Generated logs directory
-│   ├── obsidian_logs.json             # Structured log entries (appended)
-│   ├── obsidian_parser.log            # Parser execution logs
+├── logs/                               # Generated logs directory (contents git-ignored)
+│   ├── .gitkeep                        # Keeps the folder in git so Docker doesn't create it as root
+│   ├── obsidian_logs.json              # Structured log entries (appended)
+│   ├── obsidian_parser.log             # Parser execution logs + cron heartbeat
 │   ├── .last_run                       # Last run timestamp for event-based logging
 │   └── .known_files                    # Known file paths for event_type tracking
 │
@@ -624,18 +662,34 @@ obsidian-grafana/
 - `logs/obsidian_logs.json`: Append-only log file with note metadata
 - `logs/obsidian_parser.log`: Parser execution logs (from cron)
 - `logs/.last_run`: Timestamp of last successful parser run
+- `.venv/`: Virtualenv created by `setup.sh` (used by cron)
+- `.env`: Generated by `setup.sh` from `config.yaml` (git-ignored)
 
 **Docker Volumes:**
 - `loki_data`: Loki log storage and indexes
 - `grafana_data`: Grafana dashboards, preferences, and plugins
 - `alloy_data`: Alloy's file read positions (tracks ingestion progress)
+- `prometheus_data`: Prometheus metrics storage
+
+## Upgrading from an earlier version
+
+If you already have a running stack from before the pinned versions, `docker compose pull` followed by `./setup.sh` upgrades everything in place, with these things to know:
+
+- **Loki 3.0.0 → 3.7.9, and the index format.** `loki-config.yaml` now has a second `schema_config` period (`store: tsdb`, `schema: v13`) that takes effect at 00:00 UTC on its `from:` date (`2026-11-04`). The original `boltdb-shipper`/`v11` period is kept, so everything already stored stays readable; only data written from the new date on uses TSDB. Loki never rewrites old data, so no manual migration step is needed. If you ever add another period, give it a `from:` date in the future and never edit or remove an existing period. On a brand-new install you may set the new period's `from:` to any past date to use TSDB from the start.
+- **Grafana → 13.3.0** (from `latest`) and **Grafana Assistant → 2.0.96** (from the manually unzipped 1.1.52). Plugins are now installed through `GF_PLUGINS_PREINSTALL_SYNC` (see above). Take a copy of your `grafana_data` volume first if you made dashboards in the UI that you haven't exported.
+- **Prometheus → v3.15.1, Alloy → v1.21.3.** The Prometheus console flags that no longer exist were removed.
+- **Ports are bound to 127.0.0.1.** To reach the stack from another machine, put a reverse proxy in front of it rather than changing the bindings.
+- **No default Grafana password.** `GRAFANA_PASSWORD` must be set (`setup.sh` does it from `config.yaml`). An existing Grafana volume keeps the password it was created with.
+- **Loki usage reporting is disabled** (`analytics.reporting_enabled: false`); the stack no longer sends anonymous usage statistics to Grafana Labs.
+- **Python code moved into the `obsidian_grafana` package.** Re-run `./setup.sh` so cron uses the new wrapper scripts and the virtualenv; the old cron entries are replaced. The exporter image now contains the code, so use `docker compose up -d --build` after code changes.
+- **Dashboards use fixed datasource uids** (`loki`, `prometheus`). The datasource provisioning files first delete any existing datasource of the same name (`deleteDatasources`), then recreate it with the pinned uid; without that, Grafana refuses to start on a volume whose datasources were created with random uids. Installs that were using the old random uids are therefore migrated automatically on the next start.
 
 ## Production Considerations
 
 This setup is optimized for personal use and local development. For production or multi-user deployments, consider:
 
 ### Security
-- Change default Grafana password via `GRAFANA_PASSWORD` environment variable
+- Set a strong `grafana_password` (there is no default). All published ports are already bound to `127.0.0.1`
 - Enable HTTPS/TLS for all web interfaces (Grafana, Prometheus, Alloy)
 - Use Docker secrets instead of plain-text config files for credentials
 - Implement authentication for Prometheus and Loki endpoints
@@ -645,15 +699,16 @@ This setup is optimized for personal use and local development. For production o
 - **Event-Based Logging**: Already implemented to reduce log volume
 - **Log Rotation**: Automatic rotation at 50MB; adjust `max_file_size` in parser if needed
 - **Loki Retention**: Configure retention policies in `loki-config.yaml` for long-term storage
-- **Prometheus Retention**: Adjust `--storage.tsdb.retention.time` in `docker-compose.yml`
+- **Prometheus Retention**: Add `--storage.tsdb.retention.time` to the Prometheus command in `docker-compose.yml`
 - **Parser Schedule**: Adjust cron frequency based on vault size and update frequency
 - **Label Cardinality**: Monitor Loki label cardinality; reduce frontmatter labels if needed
 
 ### Data Persistence
-- Three Docker volumes persist data across container restarts:
+- Four Docker volumes persist data across container restarts:
   - `loki_data`: All log data stored in Loki
   - `grafana_data`: Dashboards, preferences, and plugin data
   - `alloy_data`: Alloy's file read positions (tracks where it left off in log files)
+  - `prometheus_data`: Prometheus metrics storage
 - Back up these volumes regularly: `docker run --rm -v loki_data:/data -v $(pwd):/backup ubuntu tar czf /backup/loki_data_backup.tar.gz -C /data .`
 - Consider external storage (NFS, S3) for long-term archival
 - **Do not use `docker compose down -v`** unless you intend to reset everything — the `-v` flag deletes all volumes, including Alloy's positions and Loki's stored data
@@ -664,9 +719,9 @@ The cron-based parser runs on the host and continues writing to `obsidian_logs.j
 
 **Requirements for seamless recovery:**
 - The `alloy_data` volume must survive the restart (avoid `docker compose down -v`)
-- Entries must not be older than `reject_old_samples_max_age` (currently 744h / 31 days) in `loki-config.yaml`
+- Entries must not be older than `reject_old_samples_max_age` (currently 8760h / 365 days) in `loki-config.yaml`
 
-**If Docker is down for longer than 31 days**, Loki will reject the oldest entries. To recover:
+**If Docker is down for longer than 365 days**, Loki will reject the oldest entries. To recover:
 
 1. Stop Loki and Alloy: `docker compose stop loki alloy`
 2. Remove their containers and volumes: `docker compose rm -f loki alloy && docker volume rm obsidian-grafana_loki_data obsidian-grafana_alloy_data`
@@ -699,7 +754,7 @@ This system can feed an [OpenClaw](https://docs.openclaw.ai) agent with structur
 
 ### How It Works
 
-The `export_vault_index.py` script scans the vault and produces two Markdown files:
+The `obsidian_grafana/export_vault_index.py` script scans the vault and produces two Markdown files:
 
 - **`vault_index_summary.md`** (~500 lines): Top 50 most-backlinked notes, top 50 underdeveloped notes, recent modifications, and vault breakdown by status/type/folder/tags. Fits in an LLM context window.
 - **`vault_index_full.md`** (all notes): Per-note metadata block for every note in the vault, sorted by backlink count. Searchable via `memory_search`.
@@ -724,16 +779,16 @@ Each note block in the index includes:
 
 ```bash
 # Using config.yaml (reads vault_path and index_output_path)
-python3 export_vault_index.py
+.venv/bin/python -m obsidian_grafana.export_vault_index
 
 # Override vault path
-python3 export_vault_index.py --vault-path /path/to/vault
+.venv/bin/python -m obsidian_grafana.export_vault_index --vault-path /path/to/vault
 
 # Override output directory
-python3 export_vault_index.py --output-dir /path/to/syncthing/folder
+.venv/bin/python -m obsidian_grafana.export_vault_index --output-dir /path/to/syncthing/folder
 
 # Debug logging
-python3 export_vault_index.py --log-level DEBUG
+.venv/bin/python -m obsidian_grafana.export_vault_index --log-level DEBUG
 ```
 
 The index runs automatically every 5 minutes via the cron job set up by `setup.sh`.
@@ -802,7 +857,6 @@ Contributions are welcome! Here are some ideas for enhancements:
 - Heatmap of writing activity by time of day/week
 - Note similarity clustering
 - Tag co-occurrence analysis
-- Word cloud dashboards
 
 ### Integration Features
 - Webhook support for real-time updates

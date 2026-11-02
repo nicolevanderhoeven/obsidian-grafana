@@ -1,8 +1,6 @@
-"""Tests for word frequency extraction in parse_notes.py"""
+"""Tests for word frequency extraction in obsidian_grafana/parse_notes.py"""
 
-import pytest
-
-from parse_notes import extract_word_frequencies, STOPWORDS, update_metrics, metrics_data, obsidian_note_total, obsidian_note_wikilinks
+from obsidian_grafana.parse_notes import extract_word_frequencies, STOPWORDS, update_metrics, obsidian_note_total, obsidian_note_wikilinks
 
 
 class TestExtractWordFrequencies:

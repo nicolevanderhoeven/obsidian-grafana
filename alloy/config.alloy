@@ -1,18 +1,26 @@
 // Alloy configuration for Obsidian note monitoring
 // This configuration reads JSON log entries and forwards them to Loki
 
-// Local file source to read the JSON log file
-loki.source.file "obsidian_logs" {
-  targets = [
+// Discover the log files. local.file_match keeps re-checking the paths, so files
+// that don't exist yet when Alloy starts (first run, before the parser has run)
+// are picked up as soon as they appear. (Static targets in loki.source.file are
+// skipped permanently if the file is missing at startup.)
+local.file_match "obsidian_logs" {
+  path_targets = [
     {
       __path__ = "/logs/obsidian_logs.json",
-      job = "obsidian-parser",
+      job      = "obsidian-parser",
     },
     {
       __path__ = "/logs/obsidian_parser.log",
-      job = "obsidian-cron",
+      job      = "obsidian-cron",
     },
   ]
+}
+
+// Read the files and forward each line for processing
+loki.source.file "obsidian_logs" {
+  targets    = local.file_match.obsidian_logs.targets
   forward_to = [loki.process.obsidian_logs.receiver]
 }
 
@@ -20,7 +28,9 @@ loki.source.file "obsidian_logs" {
 loki.process "obsidian_logs" {
   forward_to = [loki.write.loki.receiver]
 
-  // Try to parse as JSON first (for obsidian_logs.json)
+  // Try to parse as JSON first (for obsidian_logs.json). Plain-text lines (the cron
+  // heartbeat log) simply produce no extracted values. The log line itself is stored
+  // unchanged: the dashboards parse the full entry (`| json | line_format "{{.line}}" | json`).
   stage.json {
     expressions = {
       timestamp = "timestamp",
@@ -32,7 +42,6 @@ loki.process "obsidian_logs" {
       frontmatter_category = "labels.frontmatter_category",
       frontmatter_priority = "labels.frontmatter_priority",
       frontmatter_type = "labels.frontmatter_type",
-      log_line = "line",
     }
   }
 
@@ -55,16 +64,6 @@ loki.process "obsidian_logs" {
       frontmatter_priority = "",
       frontmatter_type = "",
     }
-  }
-
-  // For plain text entries (cron logs), keep the original line
-  stage.regex {
-    expression = "^(?P<log_line>.*)$"
-  }
-
-  // Set the final log line
-  stage.output {
-    source = "log_line"
   }
 }
 

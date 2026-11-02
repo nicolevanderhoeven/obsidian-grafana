@@ -1,11 +1,15 @@
-version: '3.8'
+# All published ports are bound to 127.0.0.1 so nothing is reachable from the network.
+# Required environment (setup.sh exports both from config.yaml; for plain
+# `docker compose` runs put them in .env, see .env.example):
+#   VAULT_PATH        absolute path to your Obsidian vault (mounted read-only)
+#   GRAFANA_PASSWORD  Grafana admin password (there is no default)
 
 services:
   loki:
-    image: grafana/loki:3.0.0
+    image: grafana/loki:3.7.9
     container_name: obsidian-loki
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     command: -config.file=/etc/loki/loki-config.yaml
     volumes:
       - loki_data:/loki
@@ -14,13 +18,13 @@ services:
       - obsidian-monitoring
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:v1.21.3
     container_name: obsidian-alloy
     ports:
-      - "12345:12345"  # Alloy UI
+      - "127.0.0.1:12345:12345"  # Alloy UI
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - ./logs:/logs:ro  # Read access to the logs directory
+      - ./logs:/logs:ro  # Read access to the logs directory (created by setup.sh / tracked via logs/.gitkeep)
       - alloy_data:/var/lib/alloy/data
     command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data
     depends_on:
@@ -32,51 +36,51 @@ services:
     build: .
     container_name: obsidian-metrics-exporter
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
-      - ./logs:/app/logs
-      - ./parse_notes.py:/app/parse_notes.py:ro
+      # The code is baked into the image (rebuild with `docker compose up -d --build` after changes)
       - ./config.yaml:/app/config.yaml:ro
-      - "${VAULT_PATH}:/app/vault:ro"
-    command: python3 /app/parse_notes.py --start-metrics-server --vault-path /app/vault
+      - "${VAULT_PATH:?Set VAULT_PATH to your Obsidian vault path (config.yaml via setup.sh, or .env)}:/app/vault:ro"
+    command: python3 -m obsidian_grafana.parse_notes --start-metrics-server --vault-path /app/vault
     networks:
       - obsidian-monitoring
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.1
     container_name: obsidian-prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
       - '--web.enable-lifecycle'
     networks:
       - obsidian-monitoring
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.3.0
     container_name: obsidian-grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      # Only applied when the grafana_data volume is first created; see README to change it later.
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?Set GRAFANA_PASSWORD (config.yaml grafana_password via setup.sh, or .env)}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_AUTH_MANAGED_SERVICE_ACCOUNTS_ENABLED=true
       - GF_FEATURE_TOGGLES_ENABLE=externalServiceAccounts
-      - GF_INSTALL_PLUGINS=marcusolsson-calendar-panel,volkovlabs-echarts-panel
+      # Pinned plugin versions, installed into the grafana_data volume before Grafana starts
+      # (already-installed versions are skipped, so this survives container recreation).
+      # grafana-assistant-app 2.x requires Grafana >= 13.1.
+      - GF_PLUGINS_PREINSTALL_SYNC=marcusolsson-calendar-panel@4.2.4,volkovlabs-echarts-panel@7.2.5,grafana-assistant-app@2.0.96
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/dashboards:/var/lib/grafana/dashboards
       - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - loki
-      
     networks:
       - obsidian-monitoring
 
