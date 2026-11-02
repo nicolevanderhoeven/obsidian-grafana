@@ -42,3 +42,14 @@ jobs:
           VAULT_PATH: /tmp/vault
           GRAFANA_PASSWORD: ci-placeholder
         run: docker compose config --quiet
+
+      - name: Validate docker compose file with the Grafana Cloud profile
+        env:
+          VAULT_PATH: /tmp/vault
+          GRAFANA_PASSWORD: ci-placeholder
+          GRAFANA_CLOUD_LOKI_URL: https://logs.example/loki/api/v1/push
+          GRAFANA_CLOUD_LOKI_USER: "1"
+          GRAFANA_CLOUD_PROMETHEUS_URL: https://prom.example/api/prom/push
+          GRAFANA_CLOUD_PROMETHEUS_USER: "2"
+          GRAFANA_CLOUD_TOKEN: ci-placeholder
+        run: docker compose --profile cloud config --quiet

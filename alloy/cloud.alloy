@@ -1,0 +1,91 @@
+// Optional Grafana Cloud forwarding (docker compose --profile cloud).
+// Runs in the separate `alloy-cloud` container, so the local pipeline in config.alloy is untouched.
+//
+// Forwards the same data the local dashboards use:
+//   * logs:    /logs/obsidian_logs.json (job=obsidian-parser) only. The parser's own
+//              log (obsidian_parser.log, job=obsidian-cron) is deliberately NOT read here
+//              and stays local, because it can contain absolute vault file paths.
+//   * metrics: the exporter's /metrics (incl. obsidian_word_frequency), scraped here and
+//              remote-written to Grafana Cloud Metrics.
+// Credentials come from environment variables (see .env.example); nothing is stored here.
+
+local.file_match "obsidian_events" {
+  path_targets = [
+    {
+      __path__ = "/logs/obsidian_logs.json",
+      job      = "obsidian-parser",
+    },
+  ]
+}
+
+loki.source.file "obsidian_events" {
+  targets    = local.file_match.obsidian_events.targets
+  forward_to = [loki.process.obsidian_events.receiver]
+}
+
+// Same extraction as alloy/config.alloy, so labels match the local Loki exactly.
+loki.process "obsidian_events" {
+  forward_to = [loki.write.cloud.receiver]
+
+  stage.json {
+    expressions = {
+      timestamp = "timestamp",
+      vault = "labels.vault",
+      job = "labels.job",
+      tags = "labels.tags",
+      event_type = "labels.event_type",
+      frontmatter_status = "labels.frontmatter_status",
+      frontmatter_category = "labels.frontmatter_category",
+      frontmatter_priority = "labels.frontmatter_priority",
+      frontmatter_type = "labels.frontmatter_type",
+    }
+  }
+
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339Nano"
+    action_on_failure = "skip"
+  }
+
+  stage.labels {
+    values = {
+      vault = "",
+      job = "",
+      tags = "",
+      event_type = "",
+      frontmatter_status = "",
+      frontmatter_category = "",
+      frontmatter_priority = "",
+      frontmatter_type = "",
+    }
+  }
+}
+
+loki.write "cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_LOKI_USER")
+      password = sys.env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+}
+
+prometheus.scrape "obsidian_metrics" {
+  targets         = [{"__address__" = "metrics-exporter:8080"}]
+  job_name        = "obsidian-metrics"
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.cloud.receiver]
+}
+
+prometheus.remote_write "cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USER")
+      password = sys.env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+}
