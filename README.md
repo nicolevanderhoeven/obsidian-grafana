@@ -746,9 +746,14 @@ for v in loki_data grafana_data alloy_data alloy_cloud_data prometheus_data; do
   docker run --rm -v obsidian-grafana_$v:/data:ro -v ~/obsidian-grafana-backup:/backup alpine \
     tar czf /backup/$v.tgz -C /data .
 done
-# 2. Upgrade
-git pull && docker compose pull && ./setup.sh
+# 2. Fetch the new version
+git pull
+# 3. Edit loki-config.yaml (see below) BEFORE continuing
+# 4. Upgrade
+docker compose pull && ./setup.sh
 ```
+
+**Step 3, only if your install was running the older `boltdb-shipper`/`v11`-only Loki config:** after `git pull`, open `loki-config.yaml` and change the `from:` of the `tsdb`/`v13` period to a date in the future (for example the day after tomorrow). Do not edit or remove the existing `boltdb-shipper`/`v11` period. The shipped date, `2026-11-04`, is already in the past, so skipping this makes Loki 3.7.9 treat chunks written under v11 since that date as TSDB data, and queries will not find them. Do this edit after `git pull` (not before) so the pull does not conflict with it.
 
 To roll back, `git checkout` the previous version, restore the volumes (`tar xzf` the archives back into emptied volumes) and run `docker compose up -d`. Everything is pinned in `docker-compose.yml` (images), `GF_PLUGINS_PREINSTALL_SYNC` (Grafana plugins), `Dockerfile` (Python base image) and `requirements.txt`; upgrade by editing a version deliberately, never by pulling `latest`. Things to know:
 
