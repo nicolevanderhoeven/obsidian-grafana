@@ -25,7 +25,7 @@ cd "$REPO_DIR" || exit 1
 # starts reading the fresh file from the top; the rotated generations are never read again.
 rotate_log() {
   local size i
-  size="$(stat -f %z "$PARSER_LOG" 2>/dev/null || stat -c %s "$PARSER_LOG" 2>/dev/null || echo 0)"
+  size="$(stat -c %s "$PARSER_LOG" 2>/dev/null || stat -f %z "$PARSER_LOG" 2>/dev/null || echo 0)"
   [ "$size" -gt "$MAX_BYTES" ] || return 0
   i="$KEEP"
   rm -f "${PARSER_LOG}.${i}.gz"
