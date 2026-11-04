@@ -28,6 +28,17 @@ loki.source.file "obsidian_logs" {
 loki.process "obsidian_logs" {
   forward_to = [loki.write.loki.receiver]
 
+  // obsidian_parser.log mixes the parser's plain-text stdout/stderr (deprecation warnings,
+  // INFO lines) with the JSON cron heartbeat written by scripts/cron-parse.sh. Keep only
+  // JSON lines (the heartbeat); drop the plain text, which has no event timestamp and would
+  // otherwise be stored with ingestion time. This stage must stay first, before the labels
+  // stage below can overwrite `job`.
+  stage.match {
+    selector            = "{job=\"obsidian-cron\"} !~ \"^\\\\{\""
+    action              = "drop"
+    drop_counter_reason = "non_json_parser_log_line"
+  }
+
   // Try to parse as JSON first (for obsidian_logs.json). Plain-text lines (the cron
   // heartbeat log) simply produce no extracted values. The log line itself is stored
   // unchanged: the dashboards parse the full entry (`| json | line_format "{{.line}}" | json`).

@@ -420,7 +420,7 @@ Alloy serves as the log collector and forwarder:
 
 **Monitored Files:**
 - `obsidian_logs.json`: Structured JSON log entries from parser
-- `obsidian_parser.log`: Parser execution logs (for debugging)
+- `obsidian_parser.log`: Parser execution logs (for debugging). Alloy ships only this file's JSON lines (the cron heartbeat, `job="obsidian-cron"`); the parser's plain-text output (warnings, INFO lines) stays in the file and is not sent to Loki. `scripts/cron-parse.sh` rotates it by size: above 10 MiB (`OBSIDIAN_PARSER_LOG_MAX_BYTES`) it is moved aside and gzipped, keeping 3 generations (`OBSIDIAN_PARSER_LOG_KEEP`) as `obsidian_parser.log.1.gz` to `.3.gz`, and Alloy picks up the fresh file automatically.
 
 **Processing Pipeline:**
 1. Discovers the files with `local.file_match` (so files that don't exist yet at startup are picked up once they appear) and reads them via `loki.source.file` (positions persisted in `alloy_data` volume)
