@@ -735,10 +735,30 @@ obsidian-grafana/
 
 ## Upgrading from an earlier version
 
-If you already have a running stack from before the pinned versions, `docker compose pull` followed by `./setup.sh` upgrades everything in place, with these things to know:
+If you already have a running stack from before the pinned versions, back up the data volumes first, then pull and re-run setup:
 
-- **Loki 3.0.0 → 3.7.9, and the index format.** `loki-config.yaml` now has a second `schema_config` period (`store: tsdb`, `schema: v13`) that takes effect at 00:00 UTC on its `from:` date (`2026-11-04`). The original `boltdb-shipper`/`v11` period is kept, so everything already stored stays readable; only data written from the new date on uses TSDB. Loki never rewrites old data, so no manual migration step is needed. If you ever add another period, give it a `from:` date in the future and never edit or remove an existing period. On a brand-new install you may set the new period's `from:` to any past date to use TSDB from the start.
-- **Grafana → 13.3.0** (from `latest`) and **Grafana Assistant → 2.0.96** (from the manually unzipped 1.1.52). Plugins are now installed through `GF_PLUGINS_PREINSTALL_SYNC` (see above). Take a copy of your `grafana_data` volume first if you made dashboards in the UI that you haven't exported.
+```bash
+# 1. Back up every data volume (adjust the prefix to your Compose project name; see `docker volume ls`)
+docker compose stop
+mkdir -p ~/obsidian-grafana-backup
+for v in loki_data grafana_data alloy_data alloy_cloud_data prometheus_data; do
+  docker volume inspect obsidian-grafana_$v >/dev/null 2>&1 || continue
+  docker run --rm -v obsidian-grafana_$v:/data:ro -v ~/obsidian-grafana-backup:/backup alpine \
+    tar czf /backup/$v.tgz -C /data .
+done
+# 2. Fetch the new version
+git pull
+# 3. Edit loki-config.yaml (see below) BEFORE continuing
+# 4. Upgrade
+docker compose pull && ./setup.sh
+```
+
+**Step 3, only if your install was running the older `boltdb-shipper`/`v11`-only Loki config:** after `git pull`, open `loki-config.yaml` and change the `from:` of the `tsdb`/`v13` period to a date in the future (for example the day after tomorrow). Do not edit or remove the existing `boltdb-shipper`/`v11` period. The shipped date, `2026-11-04`, is already in the past, so skipping this makes Loki 3.7.9 treat chunks written under v11 since that date as TSDB data, and queries will not find them. Do this edit after `git pull` (not before) so the pull does not conflict with it.
+
+To roll back, `git checkout` the previous version, restore the volumes (`tar xzf` the archives back into emptied volumes) and run `docker compose up -d`. Everything is pinned in `docker-compose.yml` (images), `GF_PLUGINS_PREINSTALL_SYNC` (Grafana plugins), `Dockerfile` (Python base image) and `requirements.txt`; upgrade by editing a version deliberately, never by pulling `latest`. Things to know:
+
+- **Loki 3.0.0 → 3.7.9, and the index format.** `loki-config.yaml` now has a second `schema_config` period (`store: tsdb`, `schema: v13`) that takes effect at 00:00 UTC on its `from:` date (`2026-11-04`). The original `boltdb-shipper`/`v11` period is kept; Loki never rewrites old data. For an existing install, follow step 3 above. Any period you add later needs a `from:` date in the future. On a brand-new install you may leave the date as is, or set it to any past date, to use TSDB from the start.
+- **Grafana → 13.3.0** (from `latest`) and **Grafana Assistant → 2.0.96** (from the manually unzipped 1.1.52). Plugins are now installed through `GF_PLUGINS_PREINSTALL_SYNC` (see above).
 - **Prometheus → v3.15.1, Alloy → v1.21.3.** The Prometheus console flags that no longer exist were removed.
 - **Ports are bound to 127.0.0.1.** To reach the stack from another machine, put a reverse proxy in front of it rather than changing the bindings.
 - **No default Grafana password.** `GRAFANA_PASSWORD` must be set (`setup.sh` does it from `config.yaml`). An existing Grafana volume keeps the password it was created with.
