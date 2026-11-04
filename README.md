@@ -735,7 +735,21 @@ obsidian-grafana/
 
 ## Upgrading from an earlier version
 
-If you already have a running stack from before the pinned versions, `docker compose pull` followed by `./setup.sh` upgrades everything in place, with these things to know:
+If you already have a running stack from before the pinned versions, back up the data volumes first, then pull and re-run setup:
+
+```bash
+# 1. Back up every data volume (adjust the prefix to your Compose project name; see `docker volume ls`)
+docker compose stop
+mkdir -p ~/obsidian-grafana-backup
+for v in loki_data grafana_data alloy_data prometheus_data; do
+  docker run --rm -v obsidian-grafana_$v:/data:ro -v ~/obsidian-grafana-backup:/backup alpine \
+    tar czf /backup/$v.tgz -C /data .
+done
+# 2. Upgrade
+git pull && docker compose pull && ./setup.sh
+```
+
+To roll back, `git checkout` the previous version, restore the volumes (`tar xzf` the archives back into emptied volumes) and run `docker compose up -d`. Everything is pinned in `docker-compose.yml` (images), `GF_PLUGINS_PREINSTALL_SYNC` (Grafana plugins), `Dockerfile` (Python base image) and `requirements.txt`; upgrade by editing a version deliberately, never by pulling `latest`. Things to know:
 
 - **Loki 3.0.0 → 3.7.9, and the index format.** `loki-config.yaml` now has a second `schema_config` period (`store: tsdb`, `schema: v13`) that takes effect at 00:00 UTC on its `from:` date (`2026-11-04`). The original `boltdb-shipper`/`v11` period is kept, so everything already stored stays readable; only data written from the new date on uses TSDB. Loki never rewrites old data, so no manual migration step is needed. If you ever add another period, give it a `from:` date in the future and never edit or remove an existing period. On a brand-new install you may set the new period's `from:` to any past date to use TSDB from the start.
 - **Grafana → 13.3.0** (from `latest`) and **Grafana Assistant → 2.0.96** (from the manually unzipped 1.1.52). Plugins are now installed through `GF_PLUGINS_PREINSTALL_SYNC` (see above). Take a copy of your `grafana_data` volume first if you made dashboards in the UI that you haven't exported.

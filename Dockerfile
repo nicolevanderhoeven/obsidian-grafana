@@ -1,4 +1,5 @@
-FROM python:3.11-slim
+# Pinned patch release; bump deliberately (CI runs the tests on the same minor version)
+FROM python:3.13.18-slim
 
 WORKDIR /app
 
