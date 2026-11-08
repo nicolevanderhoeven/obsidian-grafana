@@ -8,6 +8,7 @@ services:
   loki:
     image: grafana/loki:3.7.9
     container_name: obsidian-loki
+    restart: unless-stopped
     ports:
       - "127.0.0.1:3100:3100"
     command: -config.file=/etc/loki/loki-config.yaml
@@ -20,6 +21,7 @@ services:
   alloy:
     image: grafana/alloy:v1.21.3
     container_name: obsidian-alloy
+    restart: unless-stopped
     ports:
       - "127.0.0.1:12345:12345"  # Alloy UI
     volumes:
@@ -42,6 +44,7 @@ services:
   alloy-cloud:
     image: grafana/alloy:v1.21.3
     container_name: obsidian-alloy-cloud
+    restart: unless-stopped
     profiles: ["cloud"]
     environment:
       - GRAFANA_CLOUD_LOKI_URL=${GRAFANA_CLOUD_LOKI_URL:-}
@@ -62,6 +65,7 @@ services:
   metrics-exporter:
     build: .
     container_name: obsidian-metrics-exporter
+    restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
@@ -75,6 +79,7 @@ services:
   prometheus:
     image: prom/prometheus:v3.15.1
     container_name: obsidian-prometheus
+    restart: unless-stopped
     ports:
       - "127.0.0.1:9090:9090"
     volumes:
@@ -90,6 +95,7 @@ services:
   grafana:
     image: grafana/grafana:13.3.0
     container_name: obsidian-grafana
+    restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
     environment:
