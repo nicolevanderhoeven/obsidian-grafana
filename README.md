@@ -222,6 +222,7 @@ Services available at (localhost only; nothing is published on your network):
 - **Prometheus** at http://localhost:9090
 - **Metrics Exporter** at http://localhost:8080
 
+All services use `restart: unless-stopped`, so they come back on their own after Docker restarts (for example when Docker Desktop updates or restarts its engine); to survive a reboot, also enable Docker Desktop's "Start Docker Desktop when you sign in" setting.
 The parser will run every 5 minutes automatically.
 
 ### Grafana Assistant Plugin
